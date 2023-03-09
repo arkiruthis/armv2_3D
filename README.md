@@ -1,5 +1,8 @@
 # armv2_3D
 
+### Description
+Project investigating triangle rasterization on Acorn Archimedes. Primarily ARM250 (A3010 / A3020) but code compatible up to RISC PC.
+
 ### Prerequisites
 - Arculator or RPCEmu 
 - Acorn C++ (available in [RPCEmu Easy-Start bundle](https://www.marutan.net/rpcemu/index.php))
