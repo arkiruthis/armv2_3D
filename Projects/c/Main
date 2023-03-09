@@ -1,0 +1,364 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <kernel.h>
+#include <swis.h>
+#include <time.h>
+#include <math.h>
+
+#define M_PI 3.1415926535
+
+typedef signed int fix;
+
+// Fixed point utilities
+#define int2fix(x) ((x) << 16)
+#define fix2int(x) ((x) >> 16)
+#define float2fix(a) (fix)((a)*65536.f)
+#define fix2float(a) (float)((a) / 65536.f)
+#define multfix(a, b) (fix)((a >> 8) * (b >> 8))
+#define multOneOver(a, b) (fix)((a >> 16) * (b)) // Essentially INT * FIX, useful for reciprocal
+#define divfix(a, b) (fix)((a << 8) / (b >> 8)) // NOTE - slow
+
+// SIN/COS lookups
+#define fixsin(a) sinT[(a)&255]
+#define fixcos(a) sinT[((a) + 64) & 255]
+
+// General utilities
+#define largest(x, y, z) ((x) * (x > y & x > z) + (y) * (y > x & y > z) + (z) * (z > x & z > y))
+#define smin(a, b) (b + ((a - b) & ((a - b) >> (sizeof(int) * 8 - 1))))
+#define smallest(x, y, z) smin(x, smin(y, z))
+#define orient2d(a, b, c) (((b).x - (a).x) * ((c).y - (a).y) - ((b).y - (a).y) * ((c).x - (a).x));
+
+// ASM Routines
+extern void VDUSetup(void);
+extern void SetBuffers(int memStart, int memSize, int oneOver); // (R1: memStart, R2: memSize, R3: oneOver)
+extern int ReserveScreenBanks(void);
+extern void SwitchScreenBank(void);
+extern void DrawTriangle(int triList, int color);
+extern void ClearScreen(int memStart, int memSize, int color);
+
+typedef struct V2D
+{
+  fix x;
+  fix y;
+} V2D;
+
+typedef struct V3D
+{
+  fix x;
+  fix y;
+  fix z;
+} V3D;
+
+typedef struct TRI
+{
+  V3D v0;
+  V3D v1;
+  V3D v2;
+} TRI;
+
+// typedef struct MDL
+// {
+//   TRI t[NUMTRIS];
+// } MDL;
+
+// GLOBALS
+static unsigned char *ptr;    // <uint8> pointer to screen memory
+static unsigned int *ptr32;   // <uint32> pointer to screen memory
+static int swi_data[10];      // Allocation for data returned from SWI calls
+static unsigned char color;   // <uint8> color
+static unsigned int color4;   // <uint32> color (4 x the above)
+
+fix OneOver[256]; // Reciprocal table (for max screen height of 256 in Mode 13)
+fix sinT[256]; // SIN table. Offset used for COS.
+
+unsigned int getAbs(int n)
+{
+  int const mask = n >> (sizeof(int) * 8 - 1);
+  return ((n ^ mask) - mask);
+}
+
+// Int sign +1/-1
+int custom_sgn(int v)
+{
+  return (0 < v) - (v < 0);
+}
+
+int custom_abs(int v)
+{
+  return v * ((v > 0) - (v < 0));
+}
+
+void DrawTriangleC(V2D *start, V2D *shortEnd, V2D *longEnd)
+{
+  fix deltaShort;
+  fix deltaLong;
+  fix xl;
+  fix xr;
+  int Y;
+  int maxY;
+  int maxX;
+  int x;
+  int tmp;
+
+  deltaShort = multOneOver(shortEnd->x - start->x, OneOver[(shortEnd->y - start->y) >> 16]);
+  deltaLong = multOneOver(longEnd->x - start->x, OneOver[(longEnd->y - start->y) >> 16]);
+
+  if (deltaShort > deltaLong)
+  {
+    tmp = deltaShort;
+    deltaShort = deltaLong;
+    deltaLong = tmp;
+  }
+
+  xl = start->x;
+  xr = xl;
+  Y = start->y >> 16;
+  maxY = shortEnd->y >> 16;
+
+  while (Y < maxY)
+  {
+    x = (xl >> 16);
+    maxX = (xr >> 16);
+
+    ptr = (unsigned char *)(swi_data[3] + x + (Y * 320));
+
+    if ((maxX - x) > 3)
+    {
+      maxX = (x + 3) & 0xFFFC;
+
+      while (x < maxX) // BEGIN
+      {
+        *(ptr++) = color;
+        ++x;
+      }
+
+      ptr32 = (unsigned int *)(ptr);
+      maxX = (xr >> 16) & 0xFFFC;
+      while (x < maxX) // MIDDLE
+      {
+        *(ptr32++) = color4;
+        x += 4;
+      };
+
+      ptr = (unsigned char *)(ptr32);
+    }
+
+    maxX = (xr >> 16);
+
+    while (x < maxX) // END
+    {
+      *(ptr++) = color;
+      ++x;
+    }
+
+    xl += deltaShort;
+    xr += deltaLong;
+    ++Y;
+  };
+
+  deltaShort = multOneOver(longEnd->x - shortEnd->x, OneOver[(longEnd->y - shortEnd->y) >> 16]);
+  deltaLong = multOneOver(longEnd->x - start->x, OneOver[(longEnd->y - start->y) >> 16]);
+
+  if (deltaShort < deltaLong)
+  {
+    tmp = deltaShort;
+    deltaShort = deltaLong;
+    deltaLong = tmp;
+    xr = shortEnd->x;
+  }
+  else 
+  {
+    xl = shortEnd->x;
+  }
+
+  maxY = longEnd->y >> 16;
+
+  while (Y < maxY)
+  {
+    x = (xl >> 16);
+    maxX = (x + 3) & 0xFFFC;
+
+    ptr = (unsigned char *)(swi_data[3] + x + (Y * 320));
+
+    if ((maxX - x) > 3)
+    {
+      maxX = (x + 3) & 0xFFFC;
+
+      while (x < maxX)
+      {
+        *(ptr++) = color;
+        ++x;
+      }
+
+      ptr32 = (unsigned int *)(ptr);
+      maxX = (xr >> 16) & 0xFFFC;
+      while (x < maxX)
+      {
+        *(ptr32++) = color4;
+        x += 4;
+      };
+
+      ptr = (unsigned char *)(ptr32);
+    }
+
+    maxX = (xr >> 16);
+
+    while (x < maxX)
+    {
+      *(ptr++) = color;
+      ++x;
+    }
+
+    xl += deltaShort;
+    xr += deltaLong;
+    ++Y;
+  };
+}
+
+int main(int argc, char *argv[])
+{
+  _kernel_oserror *err;
+  _kernel_swi_regs rin, rout;
+
+  unsigned int i;
+  unsigned int timerTmp, timeC = 0, timeASM = 0;
+  unsigned int triC = 0, triASM = 0;
+  V2D v[3], p;
+
+  for (i = 0; i < 256; ++i)
+  {
+    sinT[i] = float2fix(sin((i * M_PI * 2.0) / 255.0));
+    OneOver[i] = (i < 4) ? float2fix(0.25f) : float2fix(1.f / i);
+  }
+
+  srand((unsigned int)time(NULL));
+
+  // rin.r[0] = (int)0;
+  // rin.r[1] = (int)7;
+  // err = _kernel_swi(OS_ReadModeVariable, &rin, &rout);
+
+  VDUSetup();
+
+  // Obtain details about the current screen mode
+  swi_data[0] = (int)148; // screen base address
+  swi_data[1] = (int)7;   // screen size
+  swi_data[2] = (int)-1;  // terminate query
+  rin.r[0] = (int)(&swi_data[0]); // Start of query
+  rin.r[1] = (int)(&swi_data[3]); // Results
+  err = _kernel_swi(OS_ReadVduVariables, &rin, &rout);
+  memset((unsigned char *)swi_data[3], 0, swi_data[4]);
+
+  SetBuffers(swi_data[3], swi_data[4], (unsigned int)(&OneOver[0])); // Store these on the ASM side for use there
+
+  if (err == NULL)
+  {
+    timerTmp = (unsigned)time(NULL);
+    timeC = 0;
+    timeASM = 0;
+
+    // C triangle timings
+    while (triC < 500000)
+    {
+      ++i;
+
+      //ClearScreen(swi_data[3] + (swi_data[4] / 8), swi_data[4] - (swi_data[4] / 3), 0);
+
+      rin.r[0] = rand() % (320 - 64);
+      rin.r[1] = 32 + rand() % (128);
+      v[0].x = int2fix(rin.r[0] + rand()%64);
+      v[0].y = int2fix(rin.r[1] + rand()%64);
+      v[1].x = int2fix(rin.r[0] + rand()%64);
+      v[1].y = int2fix(rin.r[1] + rand()%64);
+      v[2].x = int2fix(rin.r[0] + rand()%64);
+      v[2].y = int2fix(rin.r[1] + rand()%64);
+
+      color = (i << 8) | (i << 7) | (i << 5) | i | 3;
+      color4 = (color << 24) | (color << 16) | (color << 8) | color;
+
+      // Sort by y
+      if (v[0].y > v[1].y)
+      {
+        p = v[0];
+        v[0] = v[1];
+        v[1] = p;
+      }
+
+      if (v[0].y > v[2].y)
+      {
+        p = v[0];
+        v[0] = v[2];
+        v[2] = p;
+      }
+
+      if (v[1].y > v[2].y)
+      {
+        p = v[1];
+        v[1] = v[2];
+        v[2] = p;
+      }
+
+      DrawTriangleC(&v[0], &v[1], &v[2]);
+      ++triC;
+    }
+    timeASM = (unsigned)time(NULL);
+    timeC = timeASM - timerTmp;
+    timerTmp = timeASM;
+
+    // ASM triangle timings
+    while (triASM < 500000)
+    {
+      ++i;
+
+      //ClearScreen(swi_data[3] + (swi_data[4] / 8), swi_data[4] - (swi_data[4] / 3), 0);
+
+      rin.r[0] = rand() % (320 - 64);
+      rin.r[1] = 32 + rand() % (128);
+      v[0].x = int2fix(rin.r[0] + rand()%64);
+      v[0].y = int2fix(rin.r[1] + rand()%64);
+      v[1].x = int2fix(rin.r[0] + rand()%64);
+      v[1].y = int2fix(rin.r[1] + rand()%64);
+      v[2].x = int2fix(rin.r[0] + rand()%64);
+      v[2].y = int2fix(rin.r[1] + rand()%64);
+
+      color = (i << 8) | (i << 7) | (i << 5) | i | 3;
+      color4 = (color << 24) | (color << 16) | (color << 8) | color;
+
+      // Sort by y
+      if (v[0].y > v[1].y)
+      {
+        p = v[0];
+        v[0] = v[1];
+        v[1] = p;
+      }
+
+      if (v[0].y > v[2].y)
+      {
+        p = v[0];
+        v[0] = v[2];
+        v[2] = p;
+      }
+
+      if (v[1].y > v[2].y)
+      {
+        p = v[1];
+        v[1] = v[2];
+        v[2] = p;
+      }
+
+      DrawTriangle((unsigned int)(&v[0].x), color4);
+      ++triASM;
+    }
+
+    timeASM = (unsigned)time(NULL) - timerTmp;
+  }
+  else
+  {
+    printf("ERROR: %s", err->errmess);
+  }
+
+  printf("500,000 triangles\nC++: %d sec, ASM: %d sec\n", timeC, timeASM);
+
+  timerTmp = getchar(); // Just a pause before the program disappears.
+
+  return 0;
+}

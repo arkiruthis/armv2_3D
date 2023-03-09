@@ -1,0 +1,35 @@
+# Project:   Triangle2
+
+
+# Toolflags:
+CCflags = -c -depend !Depend -IC: -throwback 
+C++flags = -c -depend !Depend -IC: -throwback
+Linkflags = -aif -c++ -o $@
+ObjAsmflags = -throwback -NoCache -depend !Depend
+CMHGflags = 
+LibFileflags = -c -o $@
+Squeezeflags = -o $@
+
+
+# Final targets:
+@.!Triangle2:   @.o.Main @.^.AcornC_C++.Libraries.clib.o.stubs @.o.Utils 
+        Link $(Linkflags) @.o.Main @.^.AcornC_C++.Libraries.clib.o.stubs \
+        @.o.Utils 
+
+# User-editable dependencies:
+
+# Static dependencies:
+@.o.Main:   @.c.Main
+        cc $(ccflags) -o @.o.Main @.c.Main 
+@.o.Utils:   @.s.Utils
+        objasm $(objasmflags) -from @.s.Utils -to @.o.Utils
+
+# Dynamic dependencies:
+o.ReserveVidMem: s.ReserveVidMem
+o.Main:	c.Main
+o.Main:	C:h.kernel
+o.Main:	C:h.swis
+o.Utils: s.Utils
+o.Utils: AsmHdrs.h.SWINames
+o.Utils: s.Utils
+o.Utils: AsmHdrs.h.SWINames

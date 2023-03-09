@@ -1,0 +1,280 @@
+
+
+        GET AsmHdrs.h.SWINames ; Import the SWI names
+
+        AREA |C$$data|,DATA
+|x$dataseg|
+
+ScreenBank      DCD &1  ; Initial screen bank index
+ScreenStart     DCD &0
+ScreenMax       DCD &0
+OneOver         DCD &0
+ALIGN
+        AREA |C$$code|, CODE, READONLY
+|x$codeseg|
+
+; ====== RESERVE SCREEN BANKS =====
+; Set the display to Mode 13 and disable the screen cursor.
+
+        EXPORT  VDUSetup
+VDUSetup
+        ; Only enable OS_WriteC VDU output through OS_Byte_3
+        MOV r0,#3
+        MOV r1,#84
+        SWI OS_Byte
+
+        ; Set Mode 13
+        MOV r0,#22 ; VDU 22
+        SWI OS_WriteC
+        MOV r0,#13
+        SWI OS_WriteC
+        SWI OS_RemoveCursors
+        MOVS pc,lr
+
+; ====== SET BUFFERS =====
+; Save the memory buffer details from the C side
+; TODO - We can do this all on the ASM side... stop using the kernel SWI C funcs.
+
+        EXPORT  SetBuffers ; (R1: memStart, R2: memSize, R3: oneOver)
+SetBuffers
+        STR a1,ScreenStart
+        STR a2,ScreenMax
+        STR a3,OneOver
+        MOVS pc,lr 
+
+; ====== RESERVE SCREEN BANKS =====
+; Reserve 2 banks of screen memory
+
+        EXPORT  ReserveScreenBanks
+ReserveScreenBanks
+        MVN r0,#0 ; -1 to get current screen mode
+        MOV r1,#7 ; Number of bytes for entire screen
+        SWI OS_ReadModeVariable
+
+        MOV r3,#2   ; Double buffered (2 banks)
+        MUL r1,r2,r3 ; Double the number of bytes for 1 screen
+        MOV r2,r1
+
+        MOV r0,#2 ; Read area 2 (aka screen area)
+        SWI OS_ReadDynamicArea
+
+        SUB r1,r2,r1 ; Subtract 2 screens from total available memory
+        MOV r0,#2
+        SWI OS_ChangeDynamicArea
+        MOV r0,r1 ; Return the amount the area has changed (in bytes)
+        MOVS pc,lr
+
+; ====== SWITCH SCREEN BANK =====
+; Toggles the current screen bank for drawing. 
+
+        EXPORT  SwitchScreenBank
+SwitchScreenBank
+        LDR r1,ScreenBank
+        MOV r0,#113 ; Select the visible bank
+        SWI OS_Byte
+
+        ADD r1,r1,#1 ; Increment current bank
+        CMP r1,#2
+        BLE doNotResetBank
+        MOV  r1,#1   ; Reset it back to 1
+doNotResetBank
+        MOV r0,#112 ; Set the buffer bank for drawing
+        SWI OS_Byte
+        STR r1,ScreenBank ; Hand back the current buffer to the caller
+        MOV  pc,lr
+
+; ====== CLEAR SCREEN =====
+; Clears the current screen buffer 40 bytes at a time.
+
+        EXPORT ClearScreen ; ClearScreen(int memstart, int memsize, int color);
+ClearScreen
+        STMFD sp!,{r4-r11}
+        MOV r3, r2
+        MOV r4, r2
+        MOV r5, r2
+        MOV r6, r2
+        MOV r7, r2
+        MOV r8, r2
+        MOV r9, r2
+        MOV r10, r2
+        MOV r11, r2
+
+        ADD r12, a1, a2
+        ; a1 has start, a2 is the max mem location
+CSloop  ; Write 8 words at a time till max
+        STMEA a1!,{r2-r11}
+        CMPS a1,r12
+        BLT CSloop 
+
+        LDMFD sp!,{r4-r11}
+        MOV pc,lr
+
+dxShort RN 0
+dxLong  RN 1
+maxY    RN 2
+maxX    RN 3
+xl      RN 4
+xr      RN 5
+cY      RN 6
+cX      RN 7
+
+        EXPORT DrawTriangle ; DrawTriangle(int triList, int color);
+DrawTriangle
+        STMFD sp!,{r0-r1,r4-r12,r14} ; Store the current registers
+        LDMFD a1, {r7-r12} ; Load 3 2D sorted coords
+
+        LDR r14,OneOver ; start of oneOver block
+        SUB dxShort,r10,r8 ; shorty - starty, store in r2
+        MOV dxShort,dxShort,LSR#16
+        LDR r3,[r14,dxShort,LSL#2] ; >> 16 << 2 (4 byte jump)
+        SUB dxShort,r9,r7  ; shortx - startx, store in r0
+        MOV dxShort,dxShort,ASR#16 ; Fixed to Int
+        MUL dxShort,r3,dxShort  ; Multiply OneOver by short X delta
+
+        SUB dxLong,r12,r8 ; longy - starty, store in r3
+        MOV dxLong,dxLong,LSR#16
+        LDR r3,[r14,dxLong,LSL#2] ; >> 16 << 2 (4 byte jump)
+        SUB dxLong,r11,r7 ; longx - startx, store in r1
+        MOV dxLong,dxLong,ASR#16 ; Fixed to Int
+        MUL dxLong,r3,dxLong  ; Multiply OneOver by long X delta
+
+        CMP dxShort,dxLong ; compare deltas
+        MOVGE r9,dxShort ; swap deltas if less than
+        MOVGE dxShort,dxLong
+        MOVGE dxLong,r9
+
+        MOV xl,r7 ; Start X left
+        MOV xr,r7 ; Start X right
+        MOV cY,r8,LSR#16
+        MOV maxY,r10,LSR#16
+
+        LDR r11,[sp,#4]
+Scanline_Y1
+        CMP cY,maxY
+        BGE Scanline_Y1_End
+
+        LDR r9,ScreenStart ; Load the screen mem start location
+        MOV r10,cY,ASL#8
+        ADD r10,r10,cY,ASL#6
+        ADD r9,r9,r10
+
+        MOV cX,xl,LSR#16
+        MOV maxX,xr,LSR#16
+        SUB r8,maxX,cX ; Are we only a short distance away?
+        CMP r8,#4
+        BLT Scanline_X1_End
+
+        ADD maxX, cX, #3
+        BIC maxX, maxX, #3
+Scanline_X1_Begin ; Draw up to the next word boundary
+        CMP cX, maxX
+        BGE Scanline_X1_Middle__
+        STRB r11,[r9,cX]
+        ADD cX,cX,#1
+        B Scanline_X1_Begin
+
+Scanline_X1_Middle__
+        MOV maxX,xr,LSR#16
+        BIC maxX,maxX,#3
+Scanline_X1_Middle
+        CMP cX,maxX
+        BGE Scanline_X1_End__
+        STR r11,[r9,cX]
+        ADD cX,cX,#4
+        B Scanline_X1_Middle
+Scanline_X1_End__
+        MOV maxX,xr,LSR#16
+Scanline_X1_End
+        CMP cX,maxX
+        BGE Scanline_X1_Resume
+        STRB r11,[r9,cX]
+        ADD cX,cX,#1
+        B Scanline_X1_End
+Scanline_X1_Resume
+        ADD xl,xl,dxShort
+        ADD xr,xr,dxLong
+        ADD cY,cY,#1
+        B Scanline_Y1
+Scanline_Y1_End
+
+        ; Now do the same for the next section
+        ; We only need the short and long points 
+        LDR r0,[sp]
+        LDMFD r0, {r7-r12}              ; Load 3 2D sorted coords
+
+        SUB dxShort,r12,r10             ; longy - shorty, store in r2
+        MOV dxShort,dxShort,LSR#16
+        LDR r3,[r14,dxShort,LSL#2]      ; >> 16 << 2 (4 byte jump)
+        SUB dxShort,r11,r9              ; longx - shortx, store in r0
+        MOV dxShort,dxShort,ASR#16      ; Fixed to Int
+        MUL dxShort,r3,dxShort          ; Multiply OneOver by short X delta
+
+        SUB dxLong,r12,r8               ; longy - starty, store in r3
+        MOV dxLong,dxLong,LSR#16
+        LDR r3,[r14,dxLong,LSL#2]       ; >> 16 << 2 (4 byte jump)
+        SUB dxLong,r11,r7               ; longx - startx, store in r1
+        MOV dxLong,dxLong,ASR#16        ; Fixed to Int
+        MUL dxLong,r3,dxLong            ; Multiply OneOver by long X delta
+
+        CMP dxShort,dxLong      ; compare deltas
+        MOVGE xl,r9
+        MOVLT xr,r9
+        MOVLT r9,dxShort        ; swap deltas if less than
+        MOVLT dxShort,dxLong
+        MOVLT dxLong,r9
+
+        MOV maxY,r12,LSR#16
+
+        LDR r11,[sp,#4]
+Scanline_Y2
+        CMP cY,maxY
+        BGE Scanline_Y2_End
+
+        LDR r9,ScreenStart ; Load the screen mem start location
+        MOV r10,cY,ASL#8
+        ADD r10,r10,cY,ASL#6
+        ADD r9,r9,r10
+
+        MOV cX,xl,LSR#16
+        MOV maxX,xr,LSR#16
+        SUB r14,maxX,cX ; Are we only a short distance away?
+        CMP r14,#4
+        BLT Scanline_X2_End
+
+        ADD maxX, cX, #3
+        BIC maxX, maxX, #3
+Scanline_X2_Begin       ; Draw up to the next word boundary
+        CMP cX, maxX
+        BGE Scanline_X2_Middle__
+        STRB r11,[r9,cX]
+        ADD cX,cX,#1
+        B Scanline_X2_Begin
+
+Scanline_X2_Middle__
+        MOV maxX,xr,LSR#16
+        BIC maxX,maxX,#3
+Scanline_X2_Middle
+        CMP cX,maxX
+        BGE Scanline_X2_End__
+        STR r11,[r9,cX]
+        ADD cX,cX,#4
+        B Scanline_X2_Middle
+Scanline_X2_End__
+        MOV maxX,xr,LSR#16
+Scanline_X2_End
+        CMP cX,maxX
+        BGE Scanline_X2_Resume
+        STRB r11,[r9,cX]
+        ADD cX,cX,#1
+        B Scanline_X2_End
+Scanline_X2_Resume
+        ADD xl,xl,dxShort
+        ADD xr,xr,dxLong
+        ADD cY,cY,#1
+        B Scanline_Y2
+Scanline_Y2_End
+
+        LDMFD sp!,{r0-r1,r4-r12,r14} ; Restore registers before returning
+        MOV pc,lr
+
+        END
