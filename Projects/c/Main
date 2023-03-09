@@ -228,7 +228,7 @@ int main(int argc, char *argv[])
   for (i = 0; i < 256; ++i)
   {
     sinT[i] = float2fix(sin((i * M_PI * 2.0) / 255.0));
-    OneOver[i] = (i < 4) ? float2fix(0.25f) : float2fix(1.f / i);
+    OneOver[i] = (i < 1) ? float2fix(1.f) : float2fix(1.f / i);
   }
 
   srand((unsigned int)time(NULL));
