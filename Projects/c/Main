@@ -68,6 +68,8 @@ static int swi_data[10];      // Allocation for data returned from SWI calls
 static unsigned char color;   // <uint8> color
 static unsigned int color4;   // <uint32> color (4 x the above)
 
+#define NUM_TRIANGLES_TO_RENDER 500000
+
 fix OneOver[256]; // Reciprocal table (for max screen height of 256 in Mode 13)
 fix sinT[256]; // SIN table. Offset used for COS.
 
@@ -166,7 +168,7 @@ void DrawTriangleC(V2D *start, V2D *shortEnd, V2D *longEnd)
     deltaLong = tmp;
     xr = shortEnd->x;
   }
-  else 
+  else
   {
     xl = shortEnd->x;
   }
@@ -219,9 +221,11 @@ int main(int argc, char *argv[])
 {
   _kernel_oserror *err;
   _kernel_swi_regs rin, rout;
+  clock_t start_t, end_t;
+  float asm_time, c_time;
 
   unsigned int i;
-  unsigned int timerTmp, timeC = 0, timeASM = 0;
+  unsigned int timerTmp;
   unsigned int triC = 0, triASM = 0;
   V2D v[3], p;
 
@@ -246,18 +250,16 @@ int main(int argc, char *argv[])
   rin.r[0] = (int)(&swi_data[0]); // Start of query
   rin.r[1] = (int)(&swi_data[3]); // Results
   err = _kernel_swi(OS_ReadVduVariables, &rin, &rout);
-  memset((unsigned char *)swi_data[3], 0, swi_data[4]);
+  memset((unsigned char *)swi_data[3], 0xFF, swi_data[4]);
 
   SetBuffers(swi_data[3], swi_data[4], (unsigned int)(&OneOver[0])); // Store these on the ASM side for use there
 
   if (err == NULL)
   {
-    timerTmp = (unsigned)time(NULL);
-    timeC = 0;
-    timeASM = 0;
+    start_t = clock();
 
     // C triangle timings
-    while (triC < 500000)
+    while (triC < NUM_TRIANGLES_TO_RENDER)
     {
       ++i;
 
@@ -300,12 +302,12 @@ int main(int argc, char *argv[])
       DrawTriangleC(&v[0], &v[1], &v[2]);
       ++triC;
     }
-    timeASM = (unsigned)time(NULL);
-    timeC = timeASM - timerTmp;
-    timerTmp = timeASM;
+    end_t = clock();
+    c_time = (end_t - start_t) / (float)CLOCKS_PER_SEC;
+    start_t = clock();
 
     // ASM triangle timings
-    while (triASM < 500000)
+    while (triASM < NUM_TRIANGLES_TO_RENDER)
     {
       ++i;
 
@@ -349,14 +351,15 @@ int main(int argc, char *argv[])
       ++triASM;
     }
 
-    timeASM = (unsigned)time(NULL) - timerTmp;
+    end_t = clock();
+    asm_time = (end_t - start_t) / (float)CLOCKS_PER_SEC;
   }
   else
   {
     printf("ERROR: %s", err->errmess);
   }
 
-  printf("500,000 triangles\nC++: %d sec, ASM: %d sec\n", timeC, timeASM);
+  printf("%d triangles\nC++: %f sec, ASM: %f sec\n", NUM_TRIANGLES_TO_RENDER, c_time, asm_time);
 
   timerTmp = getchar(); // Just a pause before the program disappears.
 

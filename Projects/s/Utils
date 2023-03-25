@@ -148,15 +148,14 @@ DrawTriangle
         MOV cY,r8,LSR#16
         MOV maxY,r10,LSR#16
 
-        LDR r11,[sp,#4]
-Scanline_Y1
-        CMP cY,maxY
-        BGE Scanline_Y1_End
-
         LDR r9,ScreenStart ; Load the screen mem start location
         MOV r10,cY,ASL#8
         ADD r10,r10,cY,ASL#6
         ADD r9,r9,r10
+        LDR r11,[sp,#4]
+Scanline_Y1
+        CMP cY,maxY
+        BGE Scanline_Y1_End
 
         MOV cX,xl,LSR#16
         MOV maxX,xr,LSR#16
@@ -194,6 +193,8 @@ Scanline_X1_Resume
         ADD xl,xl,dxShort
         ADD xr,xr,dxLong
         ADD cY,cY,#1
+
+        ADD r9,r9,#320
         B Scanline_Y1
 Scanline_Y1_End
 
@@ -225,15 +226,14 @@ Scanline_Y1_End
 
         MOV maxY,r12,LSR#16
 
-        LDR r11,[sp,#4]
-Scanline_Y2
-        CMP cY,maxY
-        BGE Scanline_Y2_End
-
         LDR r9,ScreenStart ; Load the screen mem start location
         MOV r10,cY,ASL#8
         ADD r10,r10,cY,ASL#6
         ADD r9,r9,r10
+        LDR r11,[sp,#4]
+Scanline_Y2
+        CMP cY,maxY
+        BGE Scanline_Y2_End
 
         MOV cX,xl,LSR#16
         MOV maxX,xr,LSR#16
@@ -271,6 +271,8 @@ Scanline_X2_Resume
         ADD xl,xl,dxShort
         ADD xr,xr,dxLong
         ADD cY,cY,#1
+
+        ADD r9,r9,#320
         B Scanline_Y2
 Scanline_Y2_End
 
