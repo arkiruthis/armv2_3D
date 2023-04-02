@@ -1,367 +1,232 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <kernel.h>
-#include <swis.h>
-#include <time.h>
 #include <math.h>
+#include <time.h>
 
-#define M_PI 3.1415926535
+#include "kernel.h"
+#include "swis.h"
 
-typedef signed int fix;
-
-// Fixed point utilities
-#define int2fix(x) ((x) << 16)
-#define fix2int(x) ((x) >> 16)
-#define float2fix(a) (fix)((a)*65536.f)
-#define fix2float(a) (float)((a) / 65536.f)
-#define multfix(a, b) (fix)((a >> 8) * (b >> 8))
-#define multOneOver(a, b) (fix)((a >> 16) * (b)) // Essentially INT * FIX, useful for reciprocal
-#define divfix(a, b) (fix)((a << 8) / (b >> 8)) // NOTE - slow
-
-// SIN/COS lookups
-#define fixsin(a) sinT[(a)&255]
-#define fixcos(a) sinT[((a) + 64) & 255]
-
-// General utilities
-#define largest(x, y, z) ((x) * (x > y & x > z) + (y) * (y > x & y > z) + (z) * (z > x & z > y))
-#define smin(a, b) (b + ((a - b) & ((a - b) >> (sizeof(int) * 8 - 1))))
-#define smallest(x, y, z) smin(x, smin(y, z))
-#define orient2d(a, b, c) (((b).x - (a).x) * ((c).y - (a).y) - ((b).y - (a).y) * ((c).x - (a).x));
+#include "Math3D.h"
+#include "Mesh.h"
+#include "CVector.h"
 
 // ASM Routines
 extern void VDUSetup(void);
-extern void SetBuffers(int memStart, int memSize, int oneOver); // (R1: memStart, R2: memSize, R3: oneOver)
-extern int ReserveScreenBanks(void);
+extern void SetBuffers(int oneOver); // (R1: oneOver)
+extern void UpdateMemAddress(int screenStart, int screenMax);
+extern void ReserveScreenBanks(void);
 extern void SwitchScreenBank(void);
 extern void DrawTriangle(int triList, int color);
-extern void ClearScreen(int memStart, int memSize, int color);
-
-typedef struct V2D
-{
-  fix x;
-  fix y;
-} V2D;
-
-typedef struct V3D
-{
-  fix x;
-  fix y;
-  fix z;
-} V3D;
-
-typedef struct TRI
-{
-  V3D v0;
-  V3D v1;
-  V3D v2;
-} TRI;
-
-// typedef struct MDL
-// {
-//   TRI t[NUMTRIS];
-// } MDL;
+extern void ClearScreen(int color, int fullclear);
+extern int KeyPress(int keyCode);
 
 // GLOBALS
-static unsigned char *ptr;    // <uint8> pointer to screen memory
-static unsigned int *ptr32;   // <uint32> pointer to screen memory
-static int swi_data[10];      // Allocation for data returned from SWI calls
-static unsigned char color;   // <uint8> color
-static unsigned int color4;   // <uint32> color (4 x the above)
+static unsigned char color; // <uint8> color
+static unsigned int color4; // <uint32> color (4 x the above)
 
-#define NUM_TRIANGLES_TO_RENDER 500000
+// A selection of 4 x 16-level gradients from the default Archimedes 256 color palette
+unsigned char palette[64] = { 0, 1, 2, 3, 44, 45, 46, 47, 208, 209, 210, 211, 252, 253, 254, 255, // GREY
+                              32, 33, 34, 35, 64, 65, 66, 67, 96, 97, 98, 99, 103, 111, 243, 255, // GREEN
+                              4, 4, 4, 4, 4, 5, 6, 7, 56, 57, 58, 59, 212, 213, 215, 215,         // RED
+                              8, 9, 10, 11, 160, 161, 162, 163, 200, 201, 202, 203, 248, 249, 250, 251 }; // BLUE
 
-fix OneOver[256]; // Reciprocal table (for max screen height of 256 in Mode 13)
-fix sinT[256]; // SIN table. Offset used for COS.
+#define MIN(a,b) (((a)<(b))?(a):(b))
+#define MAX(a,b) (((a)>(b))?(a):(b))
+#define MAXDEPTH 512
 
-unsigned int getAbs(int n)
-{
-  int const mask = n >> (sizeof(int) * 8 - 1);
-  return ((n ^ mask) - mask);
-}
-
-// Int sign +1/-1
-int custom_sgn(int v)
-{
-  return (0 < v) - (v < 0);
-}
-
-int custom_abs(int v)
-{
-  return v * ((v > 0) - (v < 0));
-}
-
-void DrawTriangleC(V2D *start, V2D *shortEnd, V2D *longEnd)
-{
-  fix deltaShort;
-  fix deltaLong;
-  fix xl;
-  fix xr;
-  int Y;
-  int maxY;
-  int maxX;
-  int x;
-  int tmp;
-
-  deltaShort = multOneOver(shortEnd->x - start->x, OneOver[(shortEnd->y - start->y) >> 16]);
-  deltaLong = multOneOver(longEnd->x - start->x, OneOver[(longEnd->y - start->y) >> 16]);
-
-  if (deltaShort > deltaLong)
-  {
-    tmp = deltaShort;
-    deltaShort = deltaLong;
-    deltaLong = tmp;
-  }
-
-  xl = start->x;
-  xr = xl;
-  Y = start->y >> 16;
-  maxY = shortEnd->y >> 16;
-
-  while (Y < maxY)
-  {
-    x = (xl >> 16);
-    maxX = (xr >> 16);
-
-    ptr = (unsigned char *)(swi_data[3] + x + (Y * 320));
-
-    if ((maxX - x) > 3)
-    {
-      maxX = (x + 3) & 0xFFFC;
-
-      while (x < maxX) // BEGIN
-      {
-        *(ptr++) = color;
-        ++x;
-      }
-
-      ptr32 = (unsigned int *)(ptr);
-      maxX = (xr >> 16) & 0xFFFC;
-      while (x < maxX) // MIDDLE
-      {
-        *(ptr32++) = color4;
-        x += 4;
-      };
-
-      ptr = (unsigned char *)(ptr32);
-    }
-
-    maxX = (xr >> 16);
-
-    while (x < maxX) // END
-    {
-      *(ptr++) = color;
-      ++x;
-    }
-
-    xl += deltaShort;
-    xr += deltaLong;
-    ++Y;
-  };
-
-  deltaShort = multOneOver(longEnd->x - shortEnd->x, OneOver[(longEnd->y - shortEnd->y) >> 16]);
-  deltaLong = multOneOver(longEnd->x - start->x, OneOver[(longEnd->y - start->y) >> 16]);
-
-  if (deltaShort < deltaLong)
-  {
-    tmp = deltaShort;
-    deltaShort = deltaLong;
-    deltaLong = tmp;
-    xr = shortEnd->x;
-  }
-  else
-  {
-    xl = shortEnd->x;
-  }
-
-  maxY = longEnd->y >> 16;
-
-  while (Y < maxY)
-  {
-    x = (xl >> 16);
-    maxX = (x + 3) & 0xFFFC;
-
-    ptr = (unsigned char *)(swi_data[3] + x + (Y * 320));
-
-    if ((maxX - x) > 3)
-    {
-      maxX = (x + 3) & 0xFFFC;
-
-      while (x < maxX)
-      {
-        *(ptr++) = color;
-        ++x;
-      }
-
-      ptr32 = (unsigned int *)(ptr);
-      maxX = (xr >> 16) & 0xFFFC;
-      while (x < maxX)
-      {
-        *(ptr32++) = color4;
-        x += 4;
-      };
-
-      ptr = (unsigned char *)(ptr32);
-    }
-
-    maxX = (xr >> 16);
-
-    while (x < maxX)
-    {
-      *(ptr++) = color;
-      ++x;
-    }
-
-    xl += deltaShort;
-    xr += deltaLong;
-    ++Y;
-  };
+int cmpfunc (const void * a, const void * b) {
+   return ( ((TRI*)b)->depth - ((TRI*)a)->depth );
 }
 
 int main(int argc, char *argv[])
 {
-  _kernel_oserror *err;
-  _kernel_swi_regs rin, rout;
-  clock_t start_t, end_t;
-  float asm_time, c_time;
+    _kernel_oserror *err;
+    _kernel_swi_regs rin, rout;
+    int swi_data[10], isRunning = 1, isSpinning = 1;
+    unsigned char heading = 0, pitch = 16, bank = 32;
+    unsigned int i;
+    char buf[256], colorIndex = 0;
+    char *tmp;
+    float scale;
+    V3D _verts[4], axis, tmpVec;
+    V2D v[3];
+    MAT43 mat;
+    TRI *RenderQueue[MAXDEPTH], *queuePtr = NULL;
 
-  unsigned int i;
-  unsigned int timerTmp;
-  unsigned int triC = 0, triASM = 0;
-  V2D v[3], p;
+    memset(&RenderQueue[0], NULL, sizeof(TRI*) * MAXDEPTH);
 
-  for (i = 0; i < 256; ++i)
-  {
-    sinT[i] = float2fix(sin((i * M_PI * 2.0) / 255.0));
-    OneOver[i] = (i < 1) ? float2fix(1.f) : float2fix(1.f / i);
-  }
-
-  srand((unsigned int)time(NULL));
-
-  // rin.r[0] = (int)0;
-  // rin.r[1] = (int)7;
-  // err = _kernel_swi(OS_ReadModeVariable, &rin, &rout);
-
-  VDUSetup();
-
-  // Obtain details about the current screen mode
-  swi_data[0] = (int)148; // screen base address
-  swi_data[1] = (int)7;   // screen size
-  swi_data[2] = (int)-1;  // terminate query
-  rin.r[0] = (int)(&swi_data[0]); // Start of query
-  rin.r[1] = (int)(&swi_data[3]); // Results
-  err = _kernel_swi(OS_ReadVduVariables, &rin, &rout);
-  memset((unsigned char *)swi_data[3], 0xFF, swi_data[4]);
-
-  SetBuffers(swi_data[3], swi_data[4], (unsigned int)(&OneOver[0])); // Store these on the ASM side for use there
-
-  if (err == NULL)
-  {
-    start_t = clock();
-
-    // C triangle timings
-    while (triC < NUM_TRIANGLES_TO_RENDER)
+    for (i = 0; i < 256; ++i)
     {
-      ++i;
-
-      //ClearScreen(swi_data[3] + (swi_data[4] / 8), swi_data[4] - (swi_data[4] / 3), 0);
-
-      rin.r[0] = rand() % (320 - 64);
-      rin.r[1] = 32 + rand() % (128);
-      v[0].x = int2fix(rin.r[0] + rand()%64);
-      v[0].y = int2fix(rin.r[1] + rand()%64);
-      v[1].x = int2fix(rin.r[0] + rand()%64);
-      v[1].y = int2fix(rin.r[1] + rand()%64);
-      v[2].x = int2fix(rin.r[0] + rand()%64);
-      v[2].y = int2fix(rin.r[1] + rand()%64);
-
-      color = (i << 8) | (i << 7) | (i << 5) | i | 3;
-      color4 = (color << 24) | (color << 16) | (color << 8) | color;
-
-      // Sort by y
-      if (v[0].y > v[1].y)
-      {
-        p = v[0];
-        v[0] = v[1];
-        v[1] = p;
-      }
-
-      if (v[0].y > v[2].y)
-      {
-        p = v[0];
-        v[0] = v[2];
-        v[2] = p;
-      }
-
-      if (v[1].y > v[2].y)
-      {
-        p = v[1];
-        v[1] = v[2];
-        v[2] = p;
-      }
-
-      DrawTriangleC(&v[0], &v[1], &v[2]);
-      ++triC;
-    }
-    end_t = clock();
-    c_time = (end_t - start_t) / (float)CLOCKS_PER_SEC;
-    start_t = clock();
-
-    // ASM triangle timings
-    while (triASM < NUM_TRIANGLES_TO_RENDER)
-    {
-      ++i;
-
-      //ClearScreen(swi_data[3] + (swi_data[4] / 8), swi_data[4] - (swi_data[4] / 3), 0);
-
-      rin.r[0] = rand() % (320 - 64);
-      rin.r[1] = 32 + rand() % (128);
-      v[0].x = int2fix(rin.r[0] + rand()%64);
-      v[0].y = int2fix(rin.r[1] + rand()%64);
-      v[1].x = int2fix(rin.r[0] + rand()%64);
-      v[1].y = int2fix(rin.r[1] + rand()%64);
-      v[2].x = int2fix(rin.r[0] + rand()%64);
-      v[2].y = int2fix(rin.r[1] + rand()%64);
-
-      color = (i << 8) | (i << 7) | (i << 5) | i | 3;
-      color4 = (color << 24) | (color << 16) | (color << 8) | color;
-
-      // Sort by y
-      if (v[0].y > v[1].y)
-      {
-        p = v[0];
-        v[0] = v[1];
-        v[1] = p;
-      }
-
-      if (v[0].y > v[2].y)
-      {
-        p = v[0];
-        v[0] = v[2];
-        v[2] = p;
-      }
-
-      if (v[1].y > v[2].y)
-      {
-        p = v[1];
-        v[1] = v[2];
-        v[2] = p;
-      }
-
-      DrawTriangle((unsigned int)(&v[0].x), color4);
-      ++triASM;
+        g_SineTable[i] = float2fix(sin((i * M_PI * 2.0) / 255.0));
+        g_OneOver[i] = (i < 1) ? float2fix(1.f) : float2fix(1.f / i);
     }
 
-    end_t = clock();
-    asm_time = (end_t - start_t) / (float)CLOCKS_PER_SEC;
-  }
-  else
-  {
-    printf("ERROR: %s", err->errmess);
-  }
+    tmp = getenv("Game$Dir");
 
-  printf("%d triangles\nC++: %f sec, ASM: %f sec\n", NUM_TRIANGLES_TO_RENDER, c_time, asm_time);
+    sprintf(&buf[0], "%s.Ship_obj", tmp);
+    tmp = &buf[0];
+    if (LoadOBJ(tmp) != 0)
+    {
+        printf("Unable to load file. Please use the !Run script.\n");
+        return 1;
+    }
 
-  timerTmp = getchar(); // Just a pause before the program disappears.
+	printf("CONTROLS:\nF1-F4: Set Color\nSPACE: Start/Stop Spin\n");
+	printf("NUMPAD: 4/6 Heading, 8/2 Pitch, 7/9 Bank\n");
+	printf("ESC: Exit Program\n--\n");
+    printf("Press any key to continue...");
 
-  return 0;
+    // Uncomment to pause here and read data output
+    // buf[0] = getchar();
+
+    VDUSetup();
+    ReserveScreenBanks();
+    SwitchScreenBank();
+    SetBuffers((unsigned int)(&g_OneOver[0])); // Store these on the ASM side for use there
+
+    // Obtain details about the current screen mode
+    swi_data[0] = (int)148;         // screen base address
+    swi_data[1] = (int)-1;          // terminate query
+    rin.r[0] = (int)(&swi_data[0]); // Start of query
+    rin.r[1] = (int)(&swi_data[3]); // Results
+    err = _kernel_swi(OS_ReadVduVariables, &rin, &rout);
+    UpdateMemAddress(swi_data[3], swi_data[4]);
+
+    for (i = 0; i < 2; ++i)
+    {
+        SwitchScreenBank(); // Swap draw buffer with display buffer
+        rin.r[0] = (int)(&swi_data[0]); // Get the new screen start address
+        rin.r[1] = (int)(&swi_data[3]); // Results
+        err = _kernel_swi(OS_ReadVduVariables, &rin, &rout);
+        UpdateMemAddress(swi_data[3], swi_data[4]); // Pass these to the ASM side
+        ClearScreen(0, 1); // Clear the new draw buffer
+    }
+
+    if (err == NULL)
+    {
+        axis.x = float2fix(0.505f);
+        axis.y = float2fix(0.708f);
+        axis.z = float2fix(-0.303f);
+
+        Normalize(&axis);
+
+        for (i = 0; i < cvector_size(g_Mesh.verts); ++i)
+        {
+            g_Mesh.verts[i].x = multfix(g_Mesh.verts[i].x, int2fix(65));
+            g_Mesh.verts[i].y = multfix(g_Mesh.verts[i].y, int2fix(65));
+            g_Mesh.verts[i].z = multfix(g_Mesh.verts[i].z, int2fix(65));
+        }
+
+        while (isRunning)
+        {
+            isRunning = !KeyPress(112);
+            
+            if (KeyPress(98)) // Spacebar
+                isSpinning = !isSpinning;
+            if (KeyPress(113)) // F1
+                colorIndex = 0;
+            if (KeyPress(114)) // F2
+                colorIndex = 16;
+            if (KeyPress(115)) // F3
+                colorIndex = 32;
+            if (KeyPress(20)) // F4
+                colorIndex = 48;
+
+            if (isSpinning)
+            {
+                heading += 2;
+                bank --;
+            }
+
+            if (KeyPress(122)) // Numeric Keypad 4
+                heading -= 2;
+            if (KeyPress(26)) // Numeric Keypad 6
+                heading += 2;
+            if (KeyPress(42)) // Numeric Keypad 8
+                pitch -= 2;
+            if (KeyPress(124)) // Numeric Keypad 2
+                pitch += 2;
+            if (KeyPress(27)) // Numeric Keypad 7
+                bank -= 2;
+            if (KeyPress(43)) // Numeric Keypad 9
+                bank += 2;
+
+            SwitchScreenBank(); // Swap draw buffer with display buffer
+            rin.r[0] = (int)(&swi_data[0]); // Get the new screen start address
+            rin.r[1] = (int)(&swi_data[3]); // Results
+            err = _kernel_swi(OS_ReadVduVariables, &rin, &rout);
+            UpdateMemAddress(swi_data[3], swi_data[4]); // Pass these to the ASM side
+
+            ClearScreen(0, 0); // Clear the new draw buffer
+            EulerToMat(&mat, heading, pitch, bank);
+
+            // Rotate vertices and move into the negative Z space
+            // and perform a rudimentary perspective transform.
+            for (i = 0; i < cvector_size(g_Mesh.verts); ++i)
+            {
+                MultV3DMat(&g_Mesh.verts[i], &g_Mesh.verts_transformed[i], &mat);
+                g_Mesh.verts_transformed[i].z -= int2fix(200);
+
+                scale = 200.0f / fix2float(g_Mesh.verts_transformed[i].z);
+
+                g_Mesh.verts_transformed[i].x = multfix(g_Mesh.verts_transformed[i].x, float2fix(scale));
+                g_Mesh.verts_transformed[i].y = multfix(g_Mesh.verts_transformed[i].y, float2fix(scale));
+            }
+
+            // Look at the transformed normal for each face and decide whether 
+            // to include it in the next render queue.
+            for (i = 0; i < cvector_size(g_Mesh.faces); ++i)
+            {
+                g_Mesh.faces[i].next = NULL;
+                _verts[0] = g_Mesh.verts_transformed[g_Mesh.faces[i].a];
+                _verts[1] = g_Mesh.verts_transformed[g_Mesh.faces[i].b];
+                _verts[2] = g_Mesh.verts_transformed[g_Mesh.faces[i].c];
+                MultV3DMat(&g_Mesh.faces[i].normal, &tmpVec, &mat);
+                if (tmpVec.z > 0)
+                {
+                    // Add face to the destination list if it is facing us
+                    g_Mesh.faces[i].d = palette[colorIndex + tmpVec.z / 4500];
+                    // Important to invert the depth here as the camera looks into -Z
+                    // but our RenderQueue is indexed by positive numbers
+                    g_Mesh.faces[i].depth = -((_verts[0].z + _verts[1].z + _verts[2].z) >> 17);
+                    // Push the previous triangle (if any) onto the stack for this depth.
+                    g_Mesh.faces[i].next = RenderQueue[g_Mesh.faces[i].depth];
+                    RenderQueue[g_Mesh.faces[i].depth] = &g_Mesh.faces[i];
+                }
+            }
+
+            // Painter's algorithm. Proceed from furthest to nearest.
+            for (i=MAXDEPTH - 1;i !=0; i--) {
+                while (RenderQueue[i]) {  // Render faces with current depth
+                    queuePtr = RenderQueue[i];
+                    _verts[0] = g_Mesh.verts_transformed[queuePtr->a];
+                    _verts[1] = g_Mesh.verts_transformed[queuePtr->b];
+                    _verts[2] = g_Mesh.verts_transformed[queuePtr->c];
+
+                    // Offset to the screen center (160,128)
+                    // Also clear fixed point mantissa to prevent glitchy delta values
+                    v[0].x = 10485760 + _verts[0].x & 0xFFFF0000;
+                    v[0].y = 8388608 + _verts[0].y & 0xFFFF0000;
+                    v[1].x = 10485760 + _verts[1].x & 0xFFFF0000;
+                    v[1].y = 8388608 + _verts[1].y & 0xFFFF0000;
+                    v[2].x = 10485760 + _verts[2].x & 0xFFFF0000;
+                    v[2].y = 8388608 + _verts[2].y & 0xFFFF0000;
+
+                    color =  queuePtr->d; // The palette index for this face
+                    color4 = (color << 24) | (color << 16) | (color << 8) | color;
+
+                    DrawTriangle((unsigned int)(&v[0].x), color4);
+                    RenderQueue[i] = (TRI*)queuePtr->next; // Next face
+                }
+            }
+        }
+    }
+    else
+    {
+        printf("ERROR: %s", err->errmess);
+    }
+
+    FreeMesh();
+
+    return 0;
 }

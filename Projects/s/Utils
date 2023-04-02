@@ -2,16 +2,7 @@
 
         GET AsmHdrs.h.SWINames ; Import the SWI names
 
-        AREA |C$$data|,DATA
-|x$dataseg|
-
-ScreenBank      DCD &1  ; Initial screen bank index
-ScreenStart     DCD &0
-ScreenMax       DCD &0
-OneOver         DCD &0
-ALIGN
         AREA |C$$code|, CODE, READONLY
-|x$codeseg|
 
 ; ====== RESERVE SCREEN BANKS =====
 ; Set the display to Mode 13 and disable the screen cursor.
@@ -35,12 +26,16 @@ VDUSetup
 ; Save the memory buffer details from the C side
 ; TODO - We can do this all on the ASM side... stop using the kernel SWI C funcs.
 
-        EXPORT  SetBuffers ; (R1: memStart, R2: memSize, R3: oneOver)
+        EXPORT  SetBuffers ; (R1: oneOver)
 SetBuffers
+        STR a1,OneOver
+        MOVS pc,lr
+
+        EXPORT  UpdateMemAddress ; (R1: screenStart, R2: screenMax)
+UpdateMemAddress
         STR a1,ScreenStart
-        STR a2,ScreenMax
-        STR a3,OneOver
-        MOVS pc,lr 
+        ;STR a2,ScreenMax
+        MOVS pc,lr
 
 ; ====== RESERVE SCREEN BANKS =====
 ; Reserve 2 banks of screen memory
@@ -61,53 +56,68 @@ ReserveScreenBanks
         SUB r1,r2,r1 ; Subtract 2 screens from total available memory
         MOV r0,#2
         SWI OS_ChangeDynamicArea
-        MOV r0,r1 ; Return the amount the area has changed (in bytes)
+;        MOV r0,r1 ; Return the amount the area has changed (in bytes)
         MOVS pc,lr
-
 ; ====== SWITCH SCREEN BANK =====
-; Toggles the current screen bank for drawing. 
+; Toggles the current screen bank for drawing.
 
         EXPORT  SwitchScreenBank
 SwitchScreenBank
-        LDR r1,ScreenBank
+        MOV r0,#19 ; Wait for refresh
+        SWI OS_Byte
+
+        LDR r1,ScreenBank ; Load the current drawing bank and make it the visible bank
         MOV r0,#113 ; Select the visible bank
         SWI OS_Byte
 
+        LDR r1,ScreenBank ; Reload, as 113 may corrupt r1
         ADD r1,r1,#1 ; Increment current bank
-        CMP r1,#2
-        BLE doNotResetBank
-        MOV  r1,#1   ; Reset it back to 1
-doNotResetBank
+        CMP r1,#2    ; If greater than 2
+        MOVGT r1,#1  ; Reset back to 1
+        STR r1,ScreenBank
+
         MOV r0,#112 ; Set the buffer bank for drawing
         SWI OS_Byte
-        STR r1,ScreenBank ; Hand back the current buffer to the caller
-        MOV  pc,lr
+
+        MOV pc,lr
 
 ; ====== CLEAR SCREEN =====
 ; Clears the current screen buffer 40 bytes at a time.
 
-        EXPORT ClearScreen ; ClearScreen(int memstart, int memsize, int color);
+        EXPORT ClearScreen ; ClearScreen(int color);
 ClearScreen
         STMFD sp!,{r4-r11}
-        MOV r3, r2
-        MOV r4, r2
-        MOV r5, r2
-        MOV r6, r2
-        MOV r7, r2
-        MOV r8, r2
-        MOV r9, r2
-        MOV r10, r2
-        MOV r11, r2
+        MOV r3, r0
+        MOV r4, r0
+        MOV r5, r0
+        MOV r6, r0
+        MOV r7, r0
+        MOV r8, r0
+        MOV r9, r0
+        MOV r10, r0
+        MOV r11, r0
 
-        ADD r12, a1, a2
+;        CMP r1,#0
+        LDR r2,ScreenMax
+        LDR r1,ScreenStart
+;        ADDEQ r1,r1,r2,LSR#2
+;        MOVEQ r2,r2,LSR#1
+        ADD r12, r1, r2
+        MOV r2,r0
         ; a1 has start, a2 is the max mem location
 CSloop  ; Write 8 words at a time till max
-        STMEA a1!,{r2-r11}
-        CMPS a1,r12
-        BLT CSloop 
+        STMEA r1!,{r2-r11}
+        CMPS r1,r12
+        BLT CSloop
 
         LDMFD sp!,{r4-r11}
         MOV pc,lr
+
+OneOver         DCD &0
+ScreenBank      DCD &1  ; Initial screen bank index
+ScreenStart     DCD &0
+ScreenMax       DCD &00014000
+ALIGN
 
 dxShort RN 0
 dxLong  RN 1
@@ -116,12 +126,42 @@ maxX    RN 3
 xl      RN 4
 xr      RN 5
 cY      RN 6
-cX      RN 7
 
         EXPORT DrawTriangle ; DrawTriangle(int triList, int color);
 DrawTriangle
         STMFD sp!,{r0-r1,r4-r12,r14} ; Store the current registers
-        LDMFD a1, {r7-r12} ; Load 3 2D sorted coords
+
+        LDMFD a1!, {r7-r12} ; Load 3 2D un-sorted coords
+
+        ; Sort V0-V2 by Y
+        ; V0 and V1
+        CMP r8,r10
+        MOVGT r2,r7
+        MOVGT r3,r8
+        MOVGT r7,r9
+        MOVGT r8,r10
+        MOVGT r9,r2
+        MOVGT r10,r3
+
+        ; V0 and V2
+        CMP r8,r12
+        MOVGT r2,r7
+        MOVGT r3,r8
+        MOVGT r7,r11
+        MOVGT r8,r12
+        MOVGT r11,r2
+        MOVGT r12,r3
+
+        ; V1 and V2
+        CMP r10,r12
+        MOVGT r2,r9
+        MOVGT r3,r10
+        MOVGT r9,r11
+        MOVGT r10,r12
+        MOVGT r11,r2
+        MOVGT r12,r3
+
+        STMFD a1!, {r7-r12} ; Store 3 2D sorted coords
 
         LDR r14,OneOver ; start of oneOver block
         SUB dxShort,r10,r8 ; shorty - starty, store in r2
@@ -148,60 +188,59 @@ DrawTriangle
         MOV cY,r8,LSR#16
         MOV maxY,r10,LSR#16
 
-        LDR r9,ScreenStart ; Load the screen mem start location
+        LDR r12,ScreenStart ; Load the screen mem start location
         MOV r10,cY,ASL#8
         ADD r10,r10,cY,ASL#6
-        ADD r9,r9,r10
+        ADD r12,r12,r10
+        MOV r14,r12
         LDR r11,[sp,#4]
+        MOV r8,r11
+        MOV r9,r11
+        MOV r10,r11
 Scanline_Y1
         CMP cY,maxY
         BGE Scanline_Y1_End
 
-        MOV cX,xl,LSR#16
-        MOV maxX,xr,LSR#16
-        SUB r8,maxX,cX ; Are we only a short distance away?
-        CMP r8,#4
-        BLT Scanline_X1_End
+        ADD maxX,r12,xr,LSR#16 ; maxX is screenStart plus XR
+        ADD r12,r12,xl,LSR#16 ; Now update the screenStart to XL
 
-        ADD maxX, cX, #3
-        BIC maxX, maxX, #3
-Scanline_X1_Begin ; Draw up to the next word boundary
-        CMP cX, maxX
-        BGE Scanline_X1_Middle__
-        STRB r11,[r9,cX]
-        ADD cX,cX,#1
-        B Scanline_X1_Begin
+        SUB r7,maxX,r12
+        CMP r7,#4
+        BLT Scanline_X1_ByteWalk
 
-Scanline_X1_Middle__
-        MOV maxX,xr,LSR#16
-        BIC maxX,maxX,#3
-Scanline_X1_Middle
-        CMP cX,maxX
-        BGE Scanline_X1_End__
-        STR r11,[r9,cX]
-        ADD cX,cX,#4
-        B Scanline_X1_Middle
-Scanline_X1_End__
-        MOV maxX,xr,LSR#16
-Scanline_X1_End
-        CMP cX,maxX
-        BGE Scanline_X1_Resume
-        STRB r11,[r9,cX]
-        ADD cX,cX,#1
-        B Scanline_X1_End
-Scanline_X1_Resume
+        ; Shuffle up to the quad boundary
+        TST r12,#3
+        STRNEB r11,[r12],#1
+        TSTNE r12,#3
+        STRNEB r11,[r12],#1
+        TSTNE r12,#3
+        STRNEB r11,[r12],#1
+
+        CMP r7,#18 ; Worth doing 16-byte walks?
+        BLT Scanline_X1_ByteWalk
+        SUB r7,maxX,#18
+Scanline_X1_MultiWalk ; Draw 16 pixels at a time
+        STMIA r12!,{r8,r9,r10,r11}
+        CMP r12,r7
+        BLT Scanline_X1_MultiWalk
+Scanline_X1_ByteWalk ; Walk to the end just per byte
+        CMP r12,maxX
+        STRLTB r11,[r12],#1
+        BLT Scanline_X1_ByteWalk
+Scanline_Y1_Resume
+        ADD r14,r14,#320
+        MOV r12,r14
         ADD xl,xl,dxShort
         ADD xr,xr,dxLong
         ADD cY,cY,#1
-
-        ADD r9,r9,#320
         B Scanline_Y1
 Scanline_Y1_End
 
         ; Now do the same for the next section
-        ; We only need the short and long points 
+        ; We only need the short and long points
         LDR r0,[sp]
         LDMFD r0, {r7-r12}              ; Load 3 2D sorted coords
+        LDR r14,OneOver ; start of oneOver block
 
         SUB dxShort,r12,r10             ; longy - shorty, store in r2
         MOV dxShort,dxShort,LSR#16
@@ -226,57 +265,64 @@ Scanline_Y1_End
 
         MOV maxY,r12,LSR#16
 
-        LDR r9,ScreenStart ; Load the screen mem start location
+        LDR r12,ScreenStart ; Load the screen mem start location
         MOV r10,cY,ASL#8
         ADD r10,r10,cY,ASL#6
-        ADD r9,r9,r10
-        LDR r11,[sp,#4]
+        ADD r12,r12,r10
+        MOV r14,r12
+        LDR r11,[sp,#4] ; Load r8-r11 with color
+        MOV r8,r11
+        MOV r9,r11
+        MOV r10,r11
 Scanline_Y2
         CMP cY,maxY
         BGE Scanline_Y2_End
 
-        MOV cX,xl,LSR#16
-        MOV maxX,xr,LSR#16
-        SUB r14,maxX,cX ; Are we only a short distance away?
-        CMP r14,#4
-        BLT Scanline_X2_End
+        ADD maxX,r12,xr,LSR#16 ; maxX is screenStart plus XR
+        ADD r12,r12,xl,LSR#16 ; Now update the screenStart to XL
 
-        ADD maxX, cX, #3
-        BIC maxX, maxX, #3
-Scanline_X2_Begin       ; Draw up to the next word boundary
-        CMP cX, maxX
-        BGE Scanline_X2_Middle__
-        STRB r11,[r9,cX]
-        ADD cX,cX,#1
-        B Scanline_X2_Begin
+        SUB r7,maxX,r12
+        CMP r7,#4
+        BLT Scanline_X2_ByteWalk
 
-Scanline_X2_Middle__
-        MOV maxX,xr,LSR#16
-        BIC maxX,maxX,#3
-Scanline_X2_Middle
-        CMP cX,maxX
-        BGE Scanline_X2_End__
-        STR r11,[r9,cX]
-        ADD cX,cX,#4
-        B Scanline_X2_Middle
-Scanline_X2_End__
-        MOV maxX,xr,LSR#16
-Scanline_X2_End
-        CMP cX,maxX
-        BGE Scanline_X2_Resume
-        STRB r11,[r9,cX]
-        ADD cX,cX,#1
-        B Scanline_X2_End
-Scanline_X2_Resume
+        ; Shuffle up to the quad boundary
+        TST r12,#3
+        STRNEB r11,[r12],#1
+        TSTNE r12,#3
+        STRNEB r11,[r12],#1
+        TSTNE r12,#3
+        STRNEB r11,[r12],#1
+
+        CMP r7,#18 ; Worth doing 16-byte walks?
+        BLT Scanline_X2_ByteWalk
+        SUB r7,maxX,#18
+Scanline_X2_QuadWalk ; Draw 16 pixels at a time
+        STMIA r12!,{r8,r9,r10,r11}
+        CMP r12,r7
+        BLT Scanline_X2_QuadWalk
+Scanline_X2_ByteWalk ; Walk to the end just per byte
+        CMP r12,maxX
+        STRLTB r11,[r12],#1
+        BLT Scanline_X2_ByteWalk
+Scanline_Y2_Resume
+        ADD r14,r14,#320
+        MOV r12,r14
         ADD xl,xl,dxShort
         ADD xr,xr,dxLong
         ADD cY,cY,#1
-
-        ADD r9,r9,#320
         B Scanline_Y2
 Scanline_Y2_End
 
         LDMFD sp!,{r0-r1,r4-r12,r14} ; Restore registers before returning
+        MOV pc,lr
+
+        EXPORT KeyPress ; KeyPress(int keycode);
+KeyPress
+        EOR r1,r0,#&FF
+        MOV r0,#129
+        MOV r2,#255
+        SWI OS_Byte
+        MOV r0,r1; r0 contains either 0xFF or 0x00
         MOV pc,lr
 
         END

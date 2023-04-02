@@ -1,4 +1,4 @@
-# Project:   Triangle2
+# Project:   MeshRenderer
 
 
 # Toolflags:
@@ -12,24 +12,53 @@ Squeezeflags = -o $@
 
 
 # Final targets:
-@.!Triangle2:   @.o.Main @.^.AcornC_C++.Libraries.clib.o.stubs @.o.Utils 
-        Link $(Linkflags) @.o.Main @.^.AcornC_C++.Libraries.clib.o.stubs \
-        @.o.Utils 
+@.!MeshRenderer:   @.o.Utils @.o.Main @.^.AcornC_C++.Libraries.clib.o.stubs \
+        @.o.Math3D @.o.Mesh @.^.AcornC_C++.Libraries.clib.o.ansilib 
+        Link $(Linkflags) @.o.Utils @.o.Main \
+        @.^.AcornC_C++.Libraries.clib.o.stubs @.o.Math3D @.o.Mesh @.^.AcornC_C++.Libraries.clib.o.ansilib 
+
 
 # User-editable dependencies:
+
 
 # Static dependencies:
 @.o.Main:   @.c.Main
         cc $(ccflags) -o @.o.Main @.c.Main 
 @.o.Utils:   @.s.Utils
         objasm $(objasmflags) -from @.s.Utils -to @.o.Utils
+@.o.Math3D:   @.c.Math3D
+        cc $(ccflags) -o @.o.Math3D @.c.Math3D 
+@.o.Mesh:   @.c.Mesh
+        cc $(ccflags) -o @.o.Mesh @.c.Mesh 
+
 
 # Dynamic dependencies:
-o.ReserveVidMem: s.ReserveVidMem
+o.Utils: s.Utils
+o.Utils: AsmHdrs.h.SWINames
+o.Utils: s.Utils
+o.Utils: AsmHdrs.h.SWINames
+o.Mesh:	c.Mesh
+o.Mesh:	h.Mesh
+o.Mesh:	h.Math3D
+o.Mesh:	h.CVector
+o.Mesh:	h.CVector
+o.Math3D:	c.Math3D
+o.Math3D:	h.Math3D
+o.Math3D:	c.Math3D
+o.Math3D:	h.Math3D
 o.Main:	c.Main
 o.Main:	C:h.kernel
 o.Main:	C:h.swis
-o.Utils: s.Utils
-o.Utils: AsmHdrs.h.SWINames
-o.Utils: s.Utils
-o.Utils: AsmHdrs.h.SWINames
+o.Main:	h.Math3D
+o.Main:	h.Mesh
+o.Main:	h.Math3D
+o.Main:	h.CVector
+o.Main:	h.CVector
+o.Main:	c.Main
+o.Main:	C:h.kernel
+o.Main:	C:h.swis
+o.Main:	h.Math3D
+o.Main:	h.Mesh
+o.Main:	h.Math3D
+o.Main:	h.CVector
+o.Main:	h.CVector

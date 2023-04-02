@@ -1,0 +1,2 @@
+Set Game$Dir <Obey$Dir>
+Run <Obey$Dir>.!MeshRenderer

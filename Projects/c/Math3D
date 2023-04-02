@@ -1,0 +1,102 @@
+#include "Math3D.h"
+
+#include <math.h>
+
+fix g_OneOver[256]; // Reciprocal table (for max screen height of 256 in Mode 13)
+fix g_SineTable[256]; // SIN table. Offset used for COS.
+
+void SetIdentity(MAT43 *mat)
+{
+    mat->m11 = 65536;mat->m12 = 0;mat->m13 = 0;
+    mat->m21 = 0;mat->m22 = 65536;mat->m23 = 0;
+    mat->m31 = 0;mat->m32 = 0;mat->m33 = 65536;
+    mat->tx = 0;mat->ty = 0;mat->tz = 65536;
+}
+
+void EulerToMat(MAT43 *mat, int heading, int pitch, int bank)
+{
+    fix sh, ch, sp, cp, sb, cb;
+    sh = fixsin(heading);
+    ch = fixcos(heading);
+    sp = fixsin(pitch);
+    cp = fixcos(pitch);
+    sb = fixsin(bank);
+    cb = fixcos(bank);
+
+    mat->m11 = multfix(ch, cb) + multfix(multfix(sh, sp), sb);
+    mat->m12 = multfix(-ch, sb) + multfix(multfix(sh, sp), cb);
+    mat->m13 = multfix(sh, cp);
+
+    mat->m21 = multfix(sb, cp);
+    mat->m22 = multfix(cb, cp);
+    mat->m23 = -sp;
+
+    mat->m31 = multfix(-sh, cb) + multfix(multfix(ch, sp), sb);
+    mat->m32 = multfix(sb, sh) + multfix(multfix(ch, sp), cb);
+    mat->m33 = multfix(ch, cp);
+
+    mat->tx = mat->ty = mat->tz = 0;
+}
+
+void RotateAxis(MAT43 *mat, V3D *axis, int angle)
+{
+    fix s, c, a, ax, ay, az;
+    s = fixsin(angle);
+    c = fixcos(angle);
+    a = 65536 - c;
+    ax = multfix(a, axis->x);
+    ay = multfix(a, axis->y);
+    az = multfix(a, axis->z);
+
+    mat->m11 = multfix(ax, axis->x) + c;
+    mat->m12 = multfix(ax, axis->y) + multfix(s, axis->z);
+    mat->m13 = multfix(ax, axis->z) - multfix(s, axis->y);
+    mat->m21 = multfix(ay, axis->x) - multfix(s, axis->z);
+    mat->m22 = multfix(ay, axis->y) + c;
+    mat->m23 = multfix(ay, axis->z) + multfix(s, axis->x);
+    mat->m31 = multfix(az, axis->x) + multfix(s, axis->y);
+    mat->m32 = multfix(az, axis->y) - multfix(s, axis->x);
+    mat->m33 = multfix(az, axis->z) + c;
+
+    mat->tx = mat->ty = mat->tz = 0;
+}
+
+void Normal(V3D *a, V3D *b, V3D *c, V3D *n)
+{
+    V3D v1, v2;
+    v1.x = a->x - b->x;
+    v1.y = a->y - b->y;
+    v1.z = a->z - b->z;
+    v2.x = a->x - c->x;
+    v2.y = a->y - c->y;
+    v2.z = a->z - c->z;
+
+    n->x = multfix(v1.y, v2.z) - multfix(v1.z, v2.y);
+    n->y = multfix(v1.z, v2.x) - multfix(v1.x, v2.z);
+    n->z = multfix(v1.x, v2.y) - multfix(v1.y, v2.x);
+}
+
+void Normalize(V3D *v)
+{
+    double len, x, y, z;
+    x = fix2float(v->x);
+    y = fix2float(v->y);
+    z = fix2float(v->z);
+    len = sqrt(x*x + y*y + z*z);
+
+    v->x = float2fix((float)(x / len));
+    v->y = float2fix((float)(y / len));
+    v->z = float2fix((float)(z / len));
+}
+
+fix DotProduct(V3D *v1, V3D *v2)
+{
+    return multfix(v1->x, v2->x) + multfix(v1->y, v2->y) + multfix(v1->z, v2->z);
+}
+
+void MultV3DMat(V3D *v, V3D *dest, MAT43 *mat)
+{
+    dest->x = multfix(v->x, mat->m11) + multfix(v->y, mat->m12) + multfix(v->z, mat->m13) + mat->tx;
+    dest->y = multfix(v->x, mat->m21) + multfix(v->y, mat->m22) + multfix(v->z, mat->m23) + mat->ty;
+    dest->z = multfix(v->x, mat->m31) + multfix(v->y, mat->m32) + multfix(v->z, mat->m33) + mat->tz;
+}

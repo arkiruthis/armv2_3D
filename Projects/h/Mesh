@@ -1,0 +1,21 @@
+#ifndef MESH_H
+#define MESH_H
+
+#include "Math3D.h"
+#include "CVector.h"
+
+typedef struct Mesh
+{
+    cvector_vector_type(V3D) verts;
+    cvector_vector_type(TRI) faces;
+    cvector_vector_type(V3D) verts_transformed;
+} Mesh;
+
+extern Mesh g_Mesh;
+
+void SetupCube(void);
+int LoadOBJ(char* filename);
+void FreeMesh(void);
+
+#endif // MESH_H
+

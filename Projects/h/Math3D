@@ -1,0 +1,74 @@
+#ifndef MATH3D_H
+#define MATH3D_H
+
+#ifndef M_PI
+#define M_PI 3.1415926535
+#endif // M_PI
+
+// We are working with a signed 32-bit fixed-point value which is divided halfway 
+// to offer 15 bits of integer (1 bit for sign) and 16 bits of mantissa
+typedef signed int fix;
+
+// Fixed point utilities
+#define int2fix(x) ((x) << 16)
+#define fix2int(x) ((x) >> 16)
+#define float2fix(a) (fix)((a)*65536.f)
+#define fix2float(a) (float)((a) / 65536.f)
+#define multfix(a, b) (fix)((a >> 8) * (b >> 8))
+#define multOneOver(a, b) (fix)((a >> 16) * (b)) // Essentially INT * FIX, useful for reciprocal
+#define divfix(a, b) (fix)((a << 8) / (b >> 8)) // NOTE - slow
+
+// SIN/COS lookups
+#define fixsin(a) g_SineTable[(a)&255]
+#define fixcos(a) g_SineTable[((a) + 64) & 255]
+extern fix g_SineTable[256];
+
+// Reciprocal table e.g., 1/a
+#define oneover(a) g_OneOver[(a)]
+extern fix g_OneOver[256];
+
+// General utilities
+#define largest(x, y, z) ((x) * (x > y & x > z) + (y) * (y > x & y > z) + (z) * (z > x & z > y))
+#define smin(a, b) (b + ((a - b) & ((a - b) >> (sizeof(int) * 8 - 1))))
+#define smallest(x, y, z) smin(x, smin(y, z))
+#define orient2d(a, b, c) multfix((b).x - (a).x, (c).y - (a).y) - multfix((b).y - (a).y, (c).x - (a).x)
+
+typedef struct V2D
+{
+  fix x;
+  fix y;
+} V2D;
+
+typedef struct V3D
+{
+  fix x;
+  fix y;
+  fix z;
+} V3D;
+
+typedef struct TRI
+{
+  unsigned short a, b, c, d;
+  V3D normal;
+  fix depth;
+  void *next;
+} TRI;
+
+typedef struct MAT43
+{
+  fix m11, m12, m13;
+  fix m21, m22, m23;
+  fix m31, m32, m33;
+  fix tx, ty, tz;
+} MAT43;
+
+void SetIdentity(MAT43 *mat);
+void MultV3DMat(V3D *v, V3D *dest, MAT43 *mat);
+void RotateAxis(MAT43 *mat, V3D *axis, int angle);
+void EulerToMat(MAT43 *mat, int heading, int pitch, int bank);
+void Normal(V3D *a, V3D *b, V3D *c, V3D *n);
+void Normalize(V3D *v);
+fix DotProduct(V3D *v1, V3D *v2);
+
+#endif // MATH3D_H
+
