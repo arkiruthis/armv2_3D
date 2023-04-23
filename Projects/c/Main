@@ -16,6 +16,7 @@ extern void SetBuffers(int oneOver); // (R1: oneOver)
 extern void UpdateMemAddress(int screenStart, int screenMax);
 extern void ReserveScreenBanks(void);
 extern void SwitchScreenBank(void);
+extern void SortVertices(int triList);
 extern void DrawTriangle(int triList, int color);
 extern void ClearScreen(int color, int fullclear);
 extern int KeyPress(int keyCode);
@@ -23,12 +24,14 @@ extern int KeyPress(int keyCode);
 // GLOBALS
 static unsigned char color; // <uint8> color
 static unsigned int color4; // <uint32> color (4 x the above)
+_kernel_oserror *err;
+_kernel_swi_regs rin, rout;
 
 // A selection of 4 x 16-level gradients from the default Archimedes 256 color palette
 unsigned char palette[64] = { 0, 1, 2, 3, 44, 45, 46, 47, 208, 209, 210, 211, 252, 253, 254, 255, // GREY
                               32, 33, 34, 35, 64, 65, 66, 67, 96, 97, 98, 99, 103, 111, 243, 255, // GREEN
                               4, 4, 4, 4, 4, 5, 6, 7, 56, 57, 58, 59, 212, 213, 215, 215,         // RED
-                              8, 9, 10, 11, 160, 161, 162, 163, 200, 201, 202, 203, 248, 249, 250, 251 }; // BLUE
+                              8, 9, 10, 11, 160, 161, 162, 163, 200, 201, 202, 203, 232, 234, 235, 236 }; // BLUE
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
@@ -40,15 +43,13 @@ int cmpfunc (const void * a, const void * b) {
 
 int main(int argc, char *argv[])
 {
-    _kernel_oserror *err;
-    _kernel_swi_regs rin, rout;
     int swi_data[10], isRunning = 1, isSpinning = 1;
-    unsigned char heading = 0, pitch = 16, bank = 32;
+    unsigned char heading = 64, pitch = 0, bank = 0;
     unsigned int i;
     char buf[256], colorIndex = 0;
     char *tmp;
-    float scale;
-    V3D _verts[4], axis, tmpVec;
+    fix scale;
+    V3D _verts[4], tmpVec;
     V2D v[3];
     MAT43 mat;
     TRI *RenderQueue[MAXDEPTH], *queuePtr = NULL;
@@ -104,12 +105,6 @@ int main(int argc, char *argv[])
 
     if (err == NULL)
     {
-        axis.x = float2fix(0.505f);
-        axis.y = float2fix(0.708f);
-        axis.z = float2fix(-0.303f);
-
-        Normalize(&axis);
-
         for (i = 0; i < cvector_size(g_Mesh.verts); ++i)
         {
             g_Mesh.verts[i].x = multfix(g_Mesh.verts[i].x, int2fix(65));
@@ -119,8 +114,9 @@ int main(int argc, char *argv[])
 
         while (isRunning)
         {
-            isRunning = !KeyPress(112);
-            
+            // TODO, disable "escape condition" OS_Byte 124 and handle Escape key directly.
+            // isRunning = !KeyPress(112);
+
             if (KeyPress(98)) // Spacebar
                 isSpinning = !isSpinning;
             if (KeyPress(113)) // F1
@@ -157,7 +153,8 @@ int main(int argc, char *argv[])
             err = _kernel_swi(OS_ReadVduVariables, &rin, &rout);
             UpdateMemAddress(swi_data[3], swi_data[4]); // Pass these to the ASM side
 
-            ClearScreen(0, 0); // Clear the new draw buffer
+            ClearScreen(0x28282828, 1); // Clear the new draw buffer
+
             EulerToMat(&mat, heading, pitch, bank);
 
             // Rotate vertices and move into the negative Z space
@@ -167,13 +164,13 @@ int main(int argc, char *argv[])
                 MultV3DMat(&g_Mesh.verts[i], &g_Mesh.verts_transformed[i], &mat);
                 g_Mesh.verts_transformed[i].z -= int2fix(200);
 
-                scale = 200.0f / fix2float(g_Mesh.verts_transformed[i].z);
+                scale = int2fix(230) / (g_Mesh.verts_transformed[i].z >> 16);
 
-                g_Mesh.verts_transformed[i].x = multfix(g_Mesh.verts_transformed[i].x, float2fix(scale));
-                g_Mesh.verts_transformed[i].y = multfix(g_Mesh.verts_transformed[i].y, float2fix(scale));
+                g_Mesh.verts_transformed[i].x = multfix(g_Mesh.verts_transformed[i].x, (scale));
+                g_Mesh.verts_transformed[i].y = multfix(g_Mesh.verts_transformed[i].y, (scale));
             }
 
-            // Look at the transformed normal for each face and decide whether 
+            // Look at the transformed normal for each face and decide whether
             // to include it in the next render queue.
             for (i = 0; i < cvector_size(g_Mesh.faces); ++i)
             {
@@ -181,11 +178,11 @@ int main(int argc, char *argv[])
                 _verts[0] = g_Mesh.verts_transformed[g_Mesh.faces[i].a];
                 _verts[1] = g_Mesh.verts_transformed[g_Mesh.faces[i].b];
                 _verts[2] = g_Mesh.verts_transformed[g_Mesh.faces[i].c];
-                MultV3DMat(&g_Mesh.faces[i].normal, &tmpVec, &mat);
-                if (tmpVec.z > 0)
+                if (orient2d(_verts[0], _verts[1], _verts[2]) > 0)
                 {
+                    MultV3DMat(&g_Mesh.faces[i].normal, &tmpVec, &mat);
                     // Add face to the destination list if it is facing us
-                    g_Mesh.faces[i].d = palette[colorIndex + tmpVec.z / 4500];
+                    g_Mesh.faces[i].d = palette[colorIndex + MAX(tmpVec.z / 4500, 0)];
                     // Important to invert the depth here as the camera looks into -Z
                     // but our RenderQueue is indexed by positive numbers
                     g_Mesh.faces[i].depth = -((_verts[0].z + _verts[1].z + _verts[2].z) >> 17);
@@ -194,7 +191,6 @@ int main(int argc, char *argv[])
                     RenderQueue[g_Mesh.faces[i].depth] = &g_Mesh.faces[i];
                 }
             }
-
             // Painter's algorithm. Proceed from furthest to nearest.
             for (i=MAXDEPTH - 1;i !=0; i--) {
                 while (RenderQueue[i]) {  // Render faces with current depth
@@ -205,20 +201,28 @@ int main(int argc, char *argv[])
 
                     // Offset to the screen center (160,128)
                     // Also clear fixed point mantissa to prevent glitchy delta values
-                    v[0].x = 10485760 + _verts[0].x & 0xFFFF0000;
-                    v[0].y = 8388608 + _verts[0].y & 0xFFFF0000;
-                    v[1].x = 10485760 + _verts[1].x & 0xFFFF0000;
-                    v[1].y = 8388608 + _verts[1].y & 0xFFFF0000;
-                    v[2].x = 10485760 + _verts[2].x & 0xFFFF0000;
-                    v[2].y = 8388608 + _verts[2].y & 0xFFFF0000;
+                    v[0].x = 160 + fix2int(_verts[0].x);
+                    v[0].y = 128 + fix2int(_verts[0].y);
+                    v[1].x = 160 + fix2int(_verts[1].x);
+                    v[1].y = 128 + fix2int(_verts[1].y);
+                    v[2].x = 160 + fix2int(_verts[2].x);
+                    v[2].y = 128 + fix2int(_verts[2].y);
 
                     color =  queuePtr->d; // The palette index for this face
                     color4 = (color << 24) | (color << 16) | (color << 8) | color;
 
+                    SortVertices((unsigned int)(&v[0].x));
                     DrawTriangle((unsigned int)(&v[0].x), color4);
                     RenderQueue[i] = (TRI*)queuePtr->next; // Next face
                 }
             }
+
+            // Uncomment the following to print debug output top-left
+            /*
+            rin.r[0] = 256 + 30;
+            err = _kernel_swi(OS_WriteC, &rin, &rout);
+            printf("\n -- stuff to output -- \n");
+            */
         }
     }
     else

@@ -7,10 +7,10 @@ Primarily aimed at ARM250 (A3010 / A3020) but code compatible up to RISC PC.
 
 As per the license this software is released AS IS. I don't have the time to look through pull requests, etc., but please feel free to fork the project and play with it as you will. :)
 
-[![IMAGE ALT TEXT](http://img.youtube.com/vi/2qQTX1oIVMo/0.jpg)](http://www.youtube.com/watch?v=2qQTX1oIVMo "Video Title")
+[![IMAGE ALT TEXT](http://img.youtube.com/vi/HoJ2emDg2gI/0.jpg)](http://www.youtube.com/watch?v=HoJ2emDg2gI "Video Title")
 
 ### Prerequisites
-- Arculator or RPCEmu 
+- RPCEmu or Arculator (NOTE - Arculator needs UniBoot for Acorn make tools to be located)
 - Acorn C++ (available in [RPCEmu Easy-Start bundle](https://www.marutan.net/rpcemu/index.php))
 
 ### QuickStart

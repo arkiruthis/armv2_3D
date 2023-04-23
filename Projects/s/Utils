@@ -1,6 +1,6 @@
 
 
-        GET AsmHdrs.h.SWINames ; Import the SWI names
+        GET h.SWINames ; Import the SWI names
 
         AREA |C$$code|, CODE, READONLY
 
@@ -97,15 +97,46 @@ ClearScreen
         MOV r10, r0
         MOV r11, r0
 
-;        CMP r1,#0
+        CMP r1,#0
         LDR r2,ScreenMax
         LDR r1,ScreenStart
-;        ADDEQ r1,r1,r2,LSR#2
-;        MOVEQ r2,r2,LSR#1
+        ADDEQ r1,r1,r2,LSR#2
+        MOVEQ r2,r2,LSR#1
         ADD r12, r1, r2
         MOV r2,r0
         ; a1 has start, a2 is the max mem location
-CSloop  ; Write 8 words at a time till max
+CSloop  ; Write 10 words at a time till max
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
         STMEA r1!,{r2-r11}
         CMPS r1,r12
         BLT CSloop
@@ -113,205 +144,338 @@ CSloop  ; Write 8 words at a time till max
         LDMFD sp!,{r4-r11}
         MOV pc,lr
 
-OneOver         DCD &0
+OneOver         DCD &0  ; Our table of reciprocal 1/X values in fixed point
 ScreenBank      DCD &1  ; Initial screen bank index
 ScreenStart     DCD &0
 ScreenMax       DCD &00014000
+TopHeight       DCD 0   ; Height of the triangle top half
+BottomHeight    DCD 0   ; Height of the triangle bottom half
+LeftDXBottom    DCD 0   ; Delta for the bottom left side (stored for later use)
+RightDXBottom   DCD 0   ; Delta for the bottom right side (stored for later use)
+LongSideRight   DCD 0   ; 0 = Long side left, 1 = Long side right
+ShortSideXMid   DCD 0   ; X value of the middle short side vertex
+
 ALIGN
 
-dxShort RN 0
-dxLong  RN 1
-maxY    RN 2
-maxX    RN 3
-xl      RN 4
-xr      RN 5
-cY      RN 6
+TopShortDX        RN 0
+LongSideDX        RN 1
+BottomShortDX     RN 2
+
+        EXPORT SortVertices
+SortVertices 
+        STMFD sp!,{r4-r6} ; Store the current registers
+        LDMFD a1!,{r1-r6} ; Load 3 2D un-sorted coords
+
+        ; X1 = R1, Y1 = R2, X2 = R3, Y2 = R4, etc. etc.
+
+        ; Sort V0-V2 by Y, swap where necessary.
+        ; V0 and V1
+        CMP r2,r4
+        MOVGT r12,r1
+        MOVGT r1,r3
+        MOVGT r3,r12
+        MOVGT r12,r2
+        MOVGT r2,r4
+        MOVGT r4,r12
+
+        ; V0 and V2
+        CMP r2,r6
+        MOVGT r12,r1
+        MOVGT r1,r5
+        MOVGT r5,r12
+        MOVGT r12,r2
+        MOVGT r2,r6
+        MOVGT r6,r12
+
+        ; V1 and V2
+        CMP r4,r6
+        MOVGT r12,r3
+        MOVGT r3,r5
+        MOVGT r5,r12
+        MOVGT r12,r4
+        MOVGT r4,r6
+        MOVGT r6,r12
+
+        STMFD a1!,{r1-r6} ; Store 3 2D un-sorted coords
+
+        LDMFD sp!,{r4-r6} ; Restore registers
+        MOV pc,lr
 
         EXPORT DrawTriangle ; DrawTriangle(int triList, int color);
 DrawTriangle
         STMFD sp!,{r0-r1,r4-r12,r14} ; Store the current registers
 
-        LDMFD a1!, {r7-r12} ; Load 3 2D un-sorted coords
+        LDMFD a1, {r7-r12} ; Load sorted coords
 
-        ; Sort V0-V2 by Y
-        ; V0 and V1
-        CMP r8,r10
-        MOVGT r2,r7
-        MOVGT r3,r8
-        MOVGT r7,r9
-        MOVGT r8,r10
-        MOVGT r9,r2
-        MOVGT r10,r3
+        STR r9,ShortSideXMid ; We need middle X coord for the short side switch later.
 
-        ; V0 and V2
-        CMP r8,r12
-        MOVGT r2,r7
-        MOVGT r3,r8
-        MOVGT r7,r11
-        MOVGT r8,r12
-        MOVGT r11,r2
-        MOVGT r12,r3
+        LDR r5,OneOver ; start of oneOver block
+        SUB TopShortDX,r10,r8 ; shorty - starty, store in TopShortDX
+        STR TopShortDX,TopHeight ; Store the TopHeight for use in top raster loop.
 
-        ; V1 and V2
-        CMP r10,r12
-        MOVGT r2,r9
-        MOVGT r3,r10
-        MOVGT r9,r11
-        MOVGT r10,r12
-        MOVGT r11,r2
-        MOVGT r12,r3
+        LDR r3,[r5,TopShortDX,LSL#2] ; >> 16 << 2 (4 byte jump)
+        SUB TopShortDX,r9,r7  ; shortx - startx, store in TopShortDX
+        MUL TopShortDX,r3,TopShortDX  ; Multiply OneOver by short X delta
 
-        STMFD a1!, {r7-r12} ; Store 3 2D sorted coords
+        SUB LongSideDX,r12,r8 ; longy - starty, store in LongSideDX
 
-        LDR r14,OneOver ; start of oneOver block
-        SUB dxShort,r10,r8 ; shorty - starty, store in r2
-        MOV dxShort,dxShort,LSR#16
-        LDR r3,[r14,dxShort,LSL#2] ; >> 16 << 2 (4 byte jump)
-        SUB dxShort,r9,r7  ; shortx - startx, store in r0
-        MOV dxShort,dxShort,ASR#16 ; Fixed to Int
-        MUL dxShort,r3,dxShort  ; Multiply OneOver by short X delta
+        LDR r3,[r5,LongSideDX,LSL#2] ; >> 16 << 2 (4 byte jump)
+        SUB LongSideDX,r11,r7 ; longx - startx, store in LongSideDX
+        MUL LongSideDX,r3,LongSideDX  ; Multiply OneOver by long X delta
 
-        SUB dxLong,r12,r8 ; longy - starty, store in r3
-        MOV dxLong,dxLong,LSR#16
-        LDR r3,[r14,dxLong,LSL#2] ; >> 16 << 2 (4 byte jump)
-        SUB dxLong,r11,r7 ; longx - startx, store in r1
-        MOV dxLong,dxLong,ASR#16 ; Fixed to Int
-        MUL dxLong,r3,dxLong  ; Multiply OneOver by long X delta
+        SUB BottomShortDX,r12,r10 ; longy - shorty, store in BottomShortDX
+        STR BottomShortDX,BottomHeight ; Store the BottomHeight for use in bottom raster loop.
 
-        CMP dxShort,dxLong ; compare deltas
-        MOVGE r9,dxShort ; swap deltas if less than
-        MOVGE dxShort,dxLong
-        MOVGE dxLong,r9
+        LDR r3,[r5,BottomShortDX,LSL#2] ; >> 16 << 2 (4 byte jump)
+        SUB BottomShortDX,r11,r9 ; longx - shortx, store in BottomShortDX
+        MUL BottomShortDX,r3,BottomShortDX  ; Multiply OneOver by long X delta
 
-        MOV xl,r7 ; Start X left
-        MOV xr,r7 ; Start X right
-        MOV cY,r8,LSR#16
-        MOV maxY,r10,LSR#16
+        CMP TopShortDX,LongSideDX                 ; Compare deltas
+        MOVLT r14,#1
+        MOVLT r5,TopShortDX
+        MOVLT r6,LongSideDX
+        STRLT BottomShortDX, LeftDXBottom         ; Short side is on the left
+        STRLT LongSideDX, RightDXBottom           ; Long side is on the right
+        MOVGE r14,#0
+        MOVGE r5,LongSideDX 
+        MOVGE r6,TopShortDX
+        STRGE BottomShortDX, RightDXBottom        ; Short side is on the right
+        STRGE LongSideDX, LeftDXBottom            ; Long side is on the left
 
-        LDR r12,ScreenStart ; Load the screen mem start location
-        MOV r10,cY,ASL#8
-        ADD r10,r10,cY,ASL#6
-        ADD r12,r12,r10
-        MOV r14,r12
-        LDR r11,[sp,#4]
-        MOV r8,r11
-        MOV r9,r11
-        MOV r10,r11
-Scanline_Y1
-        CMP cY,maxY
-        BGE Scanline_Y1_End
+        STR r14,LongSideRight
 
-        ADD maxX,r12,xr,LSR#16 ; maxX is screenStart plus XR
-        ADD r12,r12,xl,LSR#16 ; Now update the screenStart to XL
+        LDR r11,ScreenStart     ; Load the screen mem start location
+        MOV r12,r8              ; Initial Y position
+        MOV r14,r12,LSL#8       ; Multiply by 320 in 2 stages (<< 8) + (<< 6)
+        ADD r14,r14,r12,LSL#6   ; Total Y offset * 320
+        ADD r11,r11,r14         ; Add Y offset to screen offset start location
 
-        SUB r7,maxX,r12
-        CMP r7,#4
-        BLT Scanline_X1_ByteWalk
+        LDR r14,TopHeight
+        LDR r0,[sp,#4]          ; Fill our color registers
+        MOV r1,r0
+        MOV r2,r0
+        MOV r3,r0
+
+        MOV r7,r7,LSL#16        ; Move to fixed point. Start X
+        MOV r8,r7               ; As we are at the top, minX and maxX are Start X
+
+EdgeLoopTop
+        CMP r14,#0
+        BLE EdgeLoopEndTop
+
+        ADD r9,r11,r7,LSR#16
+        ADD r10,r11,r8,LSR#16
+        SUB r4,r10,r9
+        CMP r4,#4
+        BLT SPINLAST            ; Too small, just do a byte-by-byte walk
 
         ; Shuffle up to the quad boundary
-        TST r12,#3
-        STRNEB r11,[r12],#1
-        TSTNE r12,#3
-        STRNEB r11,[r12],#1
-        TSTNE r12,#3
-        STRNEB r11,[r12],#1
+        TSTNE r9,#3
+        STRNEB r0,[r9],#1
+        SUBNE r4,r4,#1
+        TSTNE r9,#3
+        STRNEB r0,[r9],#1
+        SUBNE r4,r4,#1
+        TSTNE r9,#3
+        STRNEB r0,[r9],#1
+        SUBNE r4,r4,#1
 
-        CMP r7,#18 ; Worth doing 16-byte walks?
-        BLT Scanline_X1_ByteWalk
-        SUB r7,maxX,#18
-Scanline_X1_MultiWalk ; Draw 16 pixels at a time
-        STMIA r12!,{r8,r9,r10,r11}
-        CMP r12,r7
-        BLT Scanline_X1_MultiWalk
-Scanline_X1_ByteWalk ; Walk to the end just per byte
-        CMP r12,maxX
-        STRLTB r11,[r12],#1
-        BLT Scanline_X1_ByteWalk
-Scanline_Y1_Resume
-        ADD r14,r14,#320
-        MOV r12,r14
-        ADD xl,xl,dxShort
-        ADD xr,xr,dxLong
-        ADD cY,cY,#1
-        B Scanline_Y1
-Scanline_Y1_End
+        CMP r4,#0
+        BLE DEND
+        MOV r4,r4,LSR#4
+        CMP r4,#16
+        BGT DEND
+        ADD pc,pc,r4,LSL#2 ; If remaining width > 16 pixels, we can use this jump table.
+        B DEND
+        B DEND
+        B D1
+        B D2
+        B D3
+        B D4
+        B D5
+        B D6
+        B D7
+        B D8
+D1
+        STMIA r9!,{r0-r3}
+        B DEND
+D2
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        B DEND
+D3
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        B DEND
+D4
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        B DEND
+D5
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        B DEND
+D6
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        B DEND
+D7
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        B DEND
+D8
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        B DEND
+DEND 
 
-        ; Now do the same for the next section
-        ; We only need the short and long points
-        LDR r0,[sp]
-        LDMFD r0, {r7-r12}              ; Load 3 2D sorted coords
-        LDR r14,OneOver ; start of oneOver block
+SPINLAST
+        CMP r9,r10
+        STRLTB r0,[r9],#1
+        BLT SPINLAST
 
-        SUB dxShort,r12,r10             ; longy - shorty, store in r2
-        MOV dxShort,dxShort,LSR#16
-        LDR r3,[r14,dxShort,LSL#2]      ; >> 16 << 2 (4 byte jump)
-        SUB dxShort,r11,r9              ; longx - shortx, store in r0
-        MOV dxShort,dxShort,ASR#16      ; Fixed to Int
-        MUL dxShort,r3,dxShort          ; Multiply OneOver by short X delta
+        SUB r14,r14,#1
+        ADD r11,r11,#320
+        ADD r7,r7,r5
+        ADD r8,r8,r6
 
-        SUB dxLong,r12,r8               ; longy - starty, store in r3
-        MOV dxLong,dxLong,LSR#16
-        LDR r3,[r14,dxLong,LSL#2]       ; >> 16 << 2 (4 byte jump)
-        SUB dxLong,r11,r7               ; longx - startx, store in r1
-        MOV dxLong,dxLong,ASR#16        ; Fixed to Int
-        MUL dxLong,r3,dxLong            ; Multiply OneOver by long X delta
+        B EdgeLoopTop
+EdgeLoopEndTop
 
-        CMP dxShort,dxLong      ; compare deltas
-        MOVGE xl,r9
-        MOVLT xr,r9
-        MOVLT r9,dxShort        ; swap deltas if less than
-        MOVLT dxShort,dxLong
-        MOVLT dxLong,r9
+        LDR r6,ShortSideXMid
+        LDR r5,LongSideRight
+        TST r5,#1
+        MOVNE r7,r6,LSL#16
+        MOVEQ r8,r6,LSL#16
 
-        MOV maxY,r12,LSR#16
+        LDR r5,LeftDXBottom
+        LDR r6,RightDXBottom
+        LDR r14,BottomHeight
 
-        LDR r12,ScreenStart ; Load the screen mem start location
-        MOV r10,cY,ASL#8
-        ADD r10,r10,cY,ASL#6
-        ADD r12,r12,r10
-        MOV r14,r12
-        LDR r11,[sp,#4] ; Load r8-r11 with color
-        MOV r8,r11
-        MOV r9,r11
-        MOV r10,r11
-Scanline_Y2
-        CMP cY,maxY
-        BGE Scanline_Y2_End
+EdgeLoopBottom
+        CMP r14,#0
+        BLE EdgeLoopEndBottom
 
-        ADD maxX,r12,xr,LSR#16 ; maxX is screenStart plus XR
-        ADD r12,r12,xl,LSR#16 ; Now update the screenStart to XL
-
-        SUB r7,maxX,r12
-        CMP r7,#4
-        BLT Scanline_X2_ByteWalk
+        ADD r9,r11,r7,LSR#16
+        ADD r10,r11,r8,LSR#16
+        SUB r4,r10,r9
+        CMP r4,#4
+        BLT SPINLAST2
 
         ; Shuffle up to the quad boundary
-        TST r12,#3
-        STRNEB r11,[r12],#1
-        TSTNE r12,#3
-        STRNEB r11,[r12],#1
-        TSTNE r12,#3
-        STRNEB r11,[r12],#1
+        TSTNE r9,#3
+        STRNEB r0,[r9],#1
+        SUBNE r4,r4,#1
+        TSTNE r9,#3
+        STRNEB r0,[r9],#1
+        SUBNE r4,r4,#1
+        TSTNE r9,#3
+        STRNEB r0,[r9],#1
+        SUBNE r4,r4,#1
 
-        CMP r7,#18 ; Worth doing 16-byte walks?
-        BLT Scanline_X2_ByteWalk
-        SUB r7,maxX,#18
-Scanline_X2_QuadWalk ; Draw 16 pixels at a time
-        STMIA r12!,{r8,r9,r10,r11}
-        CMP r12,r7
-        BLT Scanline_X2_QuadWalk
-Scanline_X2_ByteWalk ; Walk to the end just per byte
-        CMP r12,maxX
-        STRLTB r11,[r12],#1
-        BLT Scanline_X2_ByteWalk
-Scanline_Y2_Resume
-        ADD r14,r14,#320
-        MOV r12,r14
-        ADD xl,xl,dxShort
-        ADD xr,xr,dxLong
-        ADD cY,cY,#1
-        B Scanline_Y2
-Scanline_Y2_End
+        CMP r4,#0
+        BLE DEND2
+        MOV r4,r4,LSR#4
+        CMP r4,#16
+        BGT DEND2
+        ADD pc,pc,r4,LSL#2
+        B DEND2
+        B DEND2
+        B D12
+        B D22
+        B D32
+        B D42
+        B D52
+        B D62
+        B D72
+        B D82
+D12
+        STMIA r9!,{r0-r3}
+        B DEND2
+D22
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        B DEND2
+D32
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        B DEND2
+D42
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        B DEND2
+D52
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        B DEND2
+D62
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        B DEND2
+D72
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        B DEND2
+D82
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        B DEND2
+DEND2 
+
+SPINLAST2
+        CMP r9,r10
+        STRLTB r0,[r9],#1
+        BLT SPINLAST2
+
+        SUB r14,r14,#1
+        ADD r11,r11,#320
+        ADD r7,r7,r5
+        ADD r8,r8,r6
+
+        B EdgeLoopBottom
+EdgeLoopEndBottom
 
         LDMFD sp!,{r0-r1,r4-r12,r14} ; Restore registers before returning
         MOV pc,lr
