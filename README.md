@@ -28,6 +28,9 @@ NUMPAD: 4/6 (Heading), 8/2 (Pitch), 7/9 (Roll)
 ### Implementation notes
 This currently uses a very naive rasterizer which renders up to a 4-byte word boundary and then uses STMIA with 4 registers to store 16-bytes of color at a time. This is by no means the fastest way to to do this.
 
+### Running on Original Hardware
+Use an emulator (Arculator, RPCEmu, ArchiEmu, etc.) to copy the Projects folder onto an ADF and either use that in a Gotek, or use it to prepare a floppy disk. This is to preserve the file types that are set up on HostFS so that they run correctly on native RISCOS. 
+
 ### Thanks
 
 I'm deeply grateful to the community on the [Stardot forums](https://stardot.org.uk/forums) who have offered valuable assistance and patiently offered answers to my endless questions. 
