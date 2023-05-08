@@ -14,10 +14,10 @@ VDUSetup
         MOV r1,#84
         SWI OS_Byte
 
-        ; Set Mode 13
+        ; Set Mode 9
         MOV r0,#22 ; VDU 22
         SWI OS_WriteC
-        MOV r0,#13
+        MOV r0,#9
         SWI OS_WriteC
         SWI OS_RemoveCursors
         MOVS pc,lr
@@ -106,38 +106,38 @@ ClearScreen
         MOV r2,r0
         ; a1 has start, a2 is the max mem location
 CSloop  ; Write 10 words at a time till max
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
-        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r9}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
+        ; STMEA r1!,{r2-r11}
         CMPS r1,r12
         BLT CSloop
 
@@ -147,7 +147,7 @@ CSloop  ; Write 10 words at a time till max
 OneOver         DCD &0  ; Our table of reciprocal 1/X values in fixed point
 ScreenBank      DCD &1  ; Initial screen bank index
 ScreenStart     DCD &0
-ScreenMax       DCD &00014000
+ScreenMax       DCD &0000A000
 TopHeight       DCD 0   ; Height of the triangle top half
 BottomHeight    DCD 0   ; Height of the triangle bottom half
 LeftDXBottom    DCD 0   ; Delta for the bottom left side (stored for later use)
@@ -247,7 +247,7 @@ DrawTriangle
         LDR r11,ScreenStart     ; Load the screen mem start location
         MOV r12,r8              ; Initial Y position
         MOV r14,r12,LSL#8       ; Multiply by 320 in 2 stages (<< 8) + (<< 6)
-        ADD r14,r14,r12,LSL#6   ; Total Y offset * 320
+        ADD r14,r14,r12,LSL#5   ; Total Y offset * 320
         ADD r11,r11,r14         ; Add Y offset to screen offset start location
 
         LDR r14,TopHeight

@@ -33,6 +33,8 @@ unsigned char palette[64] = { 0, 1, 2, 3, 44, 45, 46, 47, 208, 209, 210, 211, 25
                               4, 4, 4, 4, 4, 5, 6, 7, 56, 57, 58, 59, 212, 213, 215, 215,         // RED
                               8, 9, 10, 11, 160, 161, 162, 163, 200, 201, 202, 203, 232, 234, 235, 236 }; // BLUE
 
+unsigned pal16[16 * 3];
+
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
 #define MAXDEPTH 512
@@ -41,12 +43,39 @@ int cmpfunc (const void * a, const void * b) {
    return ( ((TRI*)b)->depth - ((TRI*)a)->depth );
 }
 
+typedef struct palEntry {
+    unsigned char VDU, INDEX, MODE, R, G, B;
+} palEntry;
+
+void setPalette()
+{
+    palEntry pal;
+    int i = 0;
+
+    pal.VDU = 19;
+    pal.MODE = 16;
+
+    rin.r[0] = (unsigned int)&pal;
+    rin.r[1] = 6;
+
+    for (i = 0; i < 16; ++i)
+    {
+        pal.R = i << 4;
+        pal.G = i << 4;
+        pal.B = i << 4;
+        pal.INDEX = i;
+
+        err = _kernel_swi(OS_WriteN, &rin, &rout);
+    }
+}
+
 int main(int argc, char *argv[])
 {
     int swi_data[10], isRunning = 1, isSpinning = 1;
     unsigned char heading = 64, pitch = 0, bank = 0;
     unsigned int i;
     char buf[256], colorIndex = 0;
+    unsigned int *ptr;
     char *tmp;
     fix scale;
     V3D _verts[4], tmpVec;
@@ -60,6 +89,13 @@ int main(int argc, char *argv[])
     {
         g_SineTable[i] = float2fix(sin((i * M_PI * 2.0) / 255.0));
         g_OneOver[i] = (i < 1) ? float2fix(1.f) : float2fix(1.f / i);
+    }
+
+    for (i = 0; i < 16; ++i) 
+    {
+        pal16[i * 3] = i << 4;
+        pal16[1 + i * 3] = i << 4;
+        pal16[2 + i * 3] = i << 4;
     }
 
     tmp = getenv("Game$Dir");
@@ -79,11 +115,12 @@ int main(int argc, char *argv[])
 
     // Uncomment to pause here and read data output
     // buf[0] = getchar();
-
+    //setPalette();
     VDUSetup();
     ReserveScreenBanks();
     SwitchScreenBank();
     SetBuffers((unsigned int)(&g_OneOver[0])); // Store these on the ASM side for use there
+    //GfxUtilsSetupPalette16((unsigned int)(&pal16[0]));
 
     // Obtain details about the current screen mode
     swi_data[0] = (int)148;         // screen base address
@@ -95,12 +132,13 @@ int main(int argc, char *argv[])
 
     for (i = 0; i < 2; ++i)
     {
+        setPalette();
         SwitchScreenBank(); // Swap draw buffer with display buffer
         rin.r[0] = (int)(&swi_data[0]); // Get the new screen start address
         rin.r[1] = (int)(&swi_data[3]); // Results
         err = _kernel_swi(OS_ReadVduVariables, &rin, &rout);
         UpdateMemAddress(swi_data[3], swi_data[4]); // Pass these to the ASM side
-        ClearScreen(0, 1); // Clear the new draw buffer
+        ClearScreen(0x0, 1); // Clear the new draw buffer
     }
 
     if (err == NULL)
@@ -153,7 +191,10 @@ int main(int argc, char *argv[])
             err = _kernel_swi(OS_ReadVduVariables, &rin, &rout);
             UpdateMemAddress(swi_data[3], swi_data[4]); // Pass these to the ASM side
 
-            ClearScreen(0x28282828, 1); // Clear the new draw buffer
+            //ptr = (unsigned int *)swi_data[3];
+            //ptr[rand()%10000] = rand();
+
+//            ClearScreen(0x0, 1); // Clear the new draw buffer
 
             EulerToMat(&mat, heading, pitch, bank);
 
@@ -191,6 +232,8 @@ int main(int argc, char *argv[])
                     RenderQueue[g_Mesh.faces[i].depth] = &g_Mesh.faces[i];
                 }
             }
+//    setPalette();
+
             // Painter's algorithm. Proceed from furthest to nearest.
             for (i=MAXDEPTH - 1;i !=0; i--) {
                 while (RenderQueue[i]) {  // Render faces with current depth
