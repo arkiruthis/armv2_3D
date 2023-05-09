@@ -13,7 +13,7 @@
 // ASM Routines
 extern void VDUSetup(void);
 extern void SetBuffers(int oneOver); // (R1: oneOver)
-extern void UpdateMemAddress(int screenStart, int screenMax);
+extern void UpdateMemAddress(int screenStart);
 extern void ReserveScreenBanks(void);
 extern void SwitchScreenBank(void);
 extern void SortVertices(int triList);
@@ -43,13 +43,13 @@ int cmpfunc (const void * a, const void * b) {
    return ( ((TRI*)b)->depth - ((TRI*)a)->depth );
 }
 
-typedef struct palEntry {
-    unsigned char VDU, INDEX, MODE, R, G, B;
-} palEntry;
-
-void setPalette()
+void SetPalette()
 {
-    palEntry pal;
+    typedef struct PalEntry {
+        unsigned char VDU, INDEX, MODE, R, G, B;
+    } PalEntry;
+
+    PalEntry pal;
     int i = 0;
 
     pal.VDU = 19;
@@ -115,29 +115,29 @@ int main(int argc, char *argv[])
 
     // Uncomment to pause here and read data output
     // buf[0] = getchar();
-    //setPalette();
+
     VDUSetup();
     ReserveScreenBanks();
     SwitchScreenBank();
     SetBuffers((unsigned int)(&g_OneOver[0])); // Store these on the ASM side for use there
-    //GfxUtilsSetupPalette16((unsigned int)(&pal16[0]));
+    SetPalette();
 
     // Obtain details about the current screen mode
     swi_data[0] = (int)148;         // screen base address
+    swi_data[1] = (int)7;           // screen size
     swi_data[1] = (int)-1;          // terminate query
     rin.r[0] = (int)(&swi_data[0]); // Start of query
     rin.r[1] = (int)(&swi_data[3]); // Results
     err = _kernel_swi(OS_ReadVduVariables, &rin, &rout);
-    UpdateMemAddress(swi_data[3], swi_data[4]);
+    UpdateMemAddress(swi_data[3]);
 
     for (i = 0; i < 2; ++i)
     {
-        setPalette();
         SwitchScreenBank(); // Swap draw buffer with display buffer
         rin.r[0] = (int)(&swi_data[0]); // Get the new screen start address
         rin.r[1] = (int)(&swi_data[3]); // Results
         err = _kernel_swi(OS_ReadVduVariables, &rin, &rout);
-        UpdateMemAddress(swi_data[3], swi_data[4]); // Pass these to the ASM side
+        UpdateMemAddress(swi_data[3]); // Pass these to the ASM side
         ClearScreen(0x0, 1); // Clear the new draw buffer
     }
 
@@ -189,12 +189,12 @@ int main(int argc, char *argv[])
             rin.r[0] = (int)(&swi_data[0]); // Get the new screen start address
             rin.r[1] = (int)(&swi_data[3]); // Results
             err = _kernel_swi(OS_ReadVduVariables, &rin, &rout);
-            UpdateMemAddress(swi_data[3], swi_data[4]); // Pass these to the ASM side
+            UpdateMemAddress(swi_data[3]); // Pass these to the ASM side
 
-            //ptr = (unsigned int *)swi_data[3];
-            //ptr[rand()%10000] = rand();
+            rin.r[0] = 12;
+            err = _kernel_swi(OS_WriteC, &rin, &rout);
 
-//            ClearScreen(0x0, 1); // Clear the new draw buffer
+            //ClearScreen(0x0, 1); // Clear the new draw buffer
 
             EulerToMat(&mat, heading, pitch, bank);
 
@@ -223,7 +223,8 @@ int main(int argc, char *argv[])
                 {
                     MultV3DMat(&g_Mesh.faces[i].normal, &tmpVec, &mat);
                     // Add face to the destination list if it is facing us
-                    g_Mesh.faces[i].d = palette[colorIndex + MAX(tmpVec.z / 4500, 0)];
+                    g_Mesh.faces[i].d = MIN(MAX(tmpVec.z / 4500, 0), 15);
+                    g_Mesh.faces[i].d |= (g_Mesh.faces[i].d << 4);
                     // Important to invert the depth here as the camera looks into -Z
                     // but our RenderQueue is indexed by positive numbers
                     g_Mesh.faces[i].depth = -((_verts[0].z + _verts[1].z + _verts[2].z) >> 17);
@@ -232,7 +233,6 @@ int main(int argc, char *argv[])
                     RenderQueue[g_Mesh.faces[i].depth] = &g_Mesh.faces[i];
                 }
             }
-//    setPalette();
 
             // Painter's algorithm. Proceed from furthest to nearest.
             for (i=MAXDEPTH - 1;i !=0; i--) {
