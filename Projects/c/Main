@@ -20,6 +20,8 @@ extern void SortVertices(int triList);
 extern void DrawTriangle(int triList, int color);
 extern void ClearScreen(int color, int fullclear);
 extern int KeyPress(int keyCode);
+extern void ResetTimer(void);
+extern int MeasureDelta(void);
 
 // GLOBALS
 static unsigned char color; // <uint8> color
@@ -43,7 +45,7 @@ int cmpfunc (const void * a, const void * b) {
    return ( ((TRI*)b)->depth - ((TRI*)a)->depth );
 }
 
-void SetPalette()
+void SetPalette(int r, int g, int b)
 {
     typedef struct PalEntry {
         unsigned char VDU, INDEX, MODE, R, G, B;
@@ -60,9 +62,9 @@ void SetPalette()
 
     for (i = 0; i < 16; ++i)
     {
-        pal.R = i << 4;
-        pal.G = i << 4;
-        pal.B = i << 4;
+        pal.R = MIN(255, (i << r));
+        pal.G = MIN(255, (i << g));
+        pal.B = MIN(255, (i << b));
         pal.INDEX = i;
 
         err = _kernel_swi(OS_WriteN, &rin, &rout);
@@ -75,13 +77,14 @@ int main(int argc, char *argv[])
     unsigned char heading = 64, pitch = 0, bank = 0;
     unsigned int i;
     char buf[256], colorIndex = 0;
-    unsigned int *ptr;
+    unsigned char *ptr;
     char *tmp;
     fix scale;
     V3D _verts[4], tmpVec;
     V2D v[3];
     MAT43 mat;
     TRI *RenderQueue[MAXDEPTH], *queuePtr = NULL;
+    int clearCycles, mathCycles, depthCycles, renderCycles, triCount;
 
     memset(&RenderQueue[0], NULL, sizeof(TRI*) * MAXDEPTH);
 
@@ -91,7 +94,7 @@ int main(int argc, char *argv[])
         g_OneOver[i] = (i < 1) ? float2fix(1.f) : float2fix(1.f / i);
     }
 
-    for (i = 0; i < 16; ++i) 
+    for (i = 0; i < 16; ++i)
     {
         pal16[i * 3] = i << 4;
         pal16[1 + i * 3] = i << 4;
@@ -120,7 +123,7 @@ int main(int argc, char *argv[])
     ReserveScreenBanks();
     SwitchScreenBank();
     SetBuffers((unsigned int)(&g_OneOver[0])); // Store these on the ASM side for use there
-    SetPalette();
+    SetPalette(4, 4, 4);
 
     // Obtain details about the current screen mode
     swi_data[0] = (int)148;         // screen base address
@@ -152,19 +155,20 @@ int main(int argc, char *argv[])
 
         while (isRunning)
         {
+            triCount = 0;
             // TODO, disable "escape condition" OS_Byte 124 and handle Escape key directly.
             // isRunning = !KeyPress(112);
 
             if (KeyPress(98)) // Spacebar
                 isSpinning = !isSpinning;
             if (KeyPress(113)) // F1
-                colorIndex = 0;
+                SetPalette(5, 5, 5);
             if (KeyPress(114)) // F2
-                colorIndex = 16;
+                SetPalette(5, 4, 4);
             if (KeyPress(115)) // F3
-                colorIndex = 32;
+                SetPalette(4, 5, 4);
             if (KeyPress(20)) // F4
-                colorIndex = 48;
+                SetPalette(4, 4, 5);
 
             if (isSpinning)
             {
@@ -191,10 +195,14 @@ int main(int argc, char *argv[])
             err = _kernel_swi(OS_ReadVduVariables, &rin, &rout);
             UpdateMemAddress(swi_data[3]); // Pass these to the ASM side
 
-            rin.r[0] = 12;
-            err = _kernel_swi(OS_WriteC, &rin, &rout);
 
-            //ClearScreen(0x0, 1); // Clear the new draw buffer
+
+            ResetTimer();
+            // rin.r[0] = 12;
+            // err = _kernel_swi(OS_WriteC, &rin, &rout);
+            ClearScreen(0x0, 1); // Clear the new draw buffer
+            clearCycles = 65536 - MeasureDelta();
+            ResetTimer();
 
             EulerToMat(&mat, heading, pitch, bank);
 
@@ -210,6 +218,9 @@ int main(int argc, char *argv[])
                 g_Mesh.verts_transformed[i].x = multfix(g_Mesh.verts_transformed[i].x, (scale));
                 g_Mesh.verts_transformed[i].y = multfix(g_Mesh.verts_transformed[i].y, (scale));
             }
+
+            mathCycles = 65536 - MeasureDelta();
+            ResetTimer();
 
             // Look at the transformed normal for each face and decide whether
             // to include it in the next render queue.
@@ -234,7 +245,11 @@ int main(int argc, char *argv[])
                 }
             }
 
+            depthCycles = 65536 - MeasureDelta();
+            ResetTimer();
+
             // Painter's algorithm. Proceed from furthest to nearest.
+
             for (i=MAXDEPTH - 1;i !=0; i--) {
                 while (RenderQueue[i]) {  // Render faces with current depth
                     queuePtr = RenderQueue[i];
@@ -254,18 +269,40 @@ int main(int argc, char *argv[])
                     color =  queuePtr->d; // The palette index for this face
                     color4 = (color << 24) | (color << 16) | (color << 8) | color;
 
+                    // ptr = (unsigned char *)(swi_data[3]);
+                    // ptr[v[0].x / 2 + v[0].y * 160] = color4;
+
+//                    *ptr = color4;
+                    ++triCount;
                     SortVertices((unsigned int)(&v[0].x));
                     DrawTriangle((unsigned int)(&v[0].x), color4);
                     RenderQueue[i] = (TRI*)queuePtr->next; // Next face
                 }
             }
 
+            renderCycles = 65536 - MeasureDelta();
+            ResetTimer();
+
             // Uncomment the following to print debug output top-left
-            /*
-            rin.r[0] = 256 + 30;
+
+            rin.r[0] = 30;
             err = _kernel_swi(OS_WriteC, &rin, &rout);
-            printf("\n -- stuff to output -- \n");
-            */
+            printf("CLEAR     : ");
+            for (i = 0; i < (clearCycles >> 10); ++i)
+                putchar('-');
+            printf("\n3D MATH   : ");
+            for (i = 0; i < (mathCycles >> 10); ++i)
+                putchar('-');
+            printf("\nDEPTH SORT: ");
+            for (i = 0; i < (depthCycles >> 10); ++i)
+                putchar('-');
+            printf("\nTRI COUNT : ");
+            for (i = 0; i < (triCount >> 2); ++i)
+                putchar('-');
+            printf("\nRASTERIZER: ");
+            for (i = 0; i < (renderCycles >> 10); ++i)
+                putchar('-');
+
         }
     }
     else

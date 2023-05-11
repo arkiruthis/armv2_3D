@@ -22,16 +22,51 @@ VDUSetup
         SWI OS_RemoveCursors
         MOVS pc,lr
 
+; Constants
+IOC_T0LOW     DCD 0x03200050 ; Timer 0 Low Byte
+IOC_T0HIGH    DCD 0x03200054 ; Timer 0 High Byte
+IOC_T0GO      DCD 0x03200058 ; Timer 0 Go
+IOC_T0LATCH   DCD 0x0320005C ; Timer 0 Latch
+
+; Variables
+DeltaTime     DCD 0
+
+        EXPORT ResetTimer
+ResetTimer
+        MOV r0, #&FF
+        LDR r1, IOC_T0LOW    ; Set Timer 0 low byte
+        STR r0,[r1]
+        LDR r1, IOC_T0HIGH   ; Set Timer 0 high byte
+        STR r0,[r1]
+        LDR r1, IOC_T0GO     ; Go! Go! Go!
+        STR r0,[r1]
+        MOV pc,lr
+
+        EXPORT  MeasureDelta
+MeasureDelta
+        MOV r0, #&FF
+        LDR r2,IOC_T0LATCH
+        STR r0,[r2]
+        LDR r2,IOC_T0HIGH ; get high byte
+        LDR r2,[r2]
+        AND r2,r2,#&FF
+        LDR r3,IOC_T0LOW ; get low byte
+        LDR r3,[r3]
+        AND r3,r3,#&FF
+        ORR r2,r3,r2,LSL#8 ; combine LO and HI
+        MOV r0,r2   ; Place count in r0 for return value in C
+        MOV pc,lr
+
 ; ====== SET BUFFERS =====
 ; Save the memory buffer details from the C side
 ; TODO - We can do this all on the ASM side... stop using the kernel SWI C funcs.
 
-        EXPORT  SetBuffers ; (R1: oneOver)
+        EXPORT  SetBuffers ; (r1: oneOver)
 SetBuffers
         STR a1,OneOver
         MOVS pc,lr
 
-        EXPORT  UpdateMemAddress ; (R1: screenStart)
+        EXPORT  UpdateMemAddress ; (r1: screenStart)
 UpdateMemAddress
         STR a1,ScreenStart
         MOVS pc,lr
@@ -106,25 +141,52 @@ ClearScreen
         ; a1 has start, a2 is the max mem location
 CSloop  ; Write 10 words at a time till max
         STMEA r1!,{r2-r9}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
-        ; STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+
+        STMEA r1!,{r2-r9}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}
+        STMEA r1!,{r2-r11}        
         ; STMEA r1!,{r2-r11}
         ; STMEA r1!,{r2-r11}
         ; STMEA r1!,{r2-r11}
@@ -161,11 +223,11 @@ LongSideDX        RN 1
 BottomShortDX     RN 2
 
         EXPORT SortVertices
-SortVertices 
+SortVertices
         STMFD sp!,{r4-r6} ; Store the current registers
         LDMFD a1!,{r1-r6} ; Load 3 2D un-sorted coords
 
-        ; X1 = R1, Y1 = R2, X2 = R3, Y2 = R4, etc. etc.
+        ; X1 = r1, Y1 = r2, X2 = r3, Y2 = R4, etc. etc.
 
         ; Sort V0-V2 by Y, swap where necessary.
         ; V0 and V1
@@ -241,7 +303,7 @@ DrawTriangle
         STRLT BottomShortDX, LeftDXBottom         ; Short side is on the left
         STRLT LongSideDX, RightDXBottom           ; Long side is on the right
         MOVGE r14,#0
-        MOVGE r5,LongSideDX 
+        MOVGE r5,LongSideDX
         MOVGE r6,TopShortDX
         STRGE BottomShortDX, RightDXBottom        ; Short side is on the right
         STRGE LongSideDX, LeftDXBottom            ; Long side is on the left
@@ -301,7 +363,7 @@ EdgeLoopBottom
         ADD r9,r11,r7,LSR#17
         ADD r10,r11,r8,LSR#17
         SUB r4,r10,r9
- 
+
 SPINLAST2
         CMP r9,r10
         STRLTB r0,[r9],#1
