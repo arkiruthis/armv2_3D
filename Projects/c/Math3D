@@ -1,5 +1,6 @@
-#include "Math3D.h"
+/* language: C */
 
+#include "Math3D.h"
 #include <math.h>
 
 fix g_OneOver[256]; // Reciprocal table (for max screen height of 256 in Mode 13)
