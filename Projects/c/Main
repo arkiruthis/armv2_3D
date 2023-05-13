@@ -84,7 +84,7 @@ int main(int argc, char *argv[])
     V2D v[3];
     MAT43 mat;
     TRI *RenderQueue[MAXDEPTH], *queuePtr = NULL;
-    int clearCycles, mathCycles, depthCycles, renderCycles, triCount;
+    int clearCycles, mathCycles, depthCycles, renderCycles, triCount, isShowingStats = 0;
 
     memset(&RenderQueue[0], NULL, sizeof(TRI*) * MAXDEPTH);
 
@@ -195,14 +195,16 @@ int main(int argc, char *argv[])
             err = _kernel_swi(OS_ReadVduVariables, &rin, &rout);
             UpdateMemAddress(swi_data[3]); // Pass these to the ASM side
 
+            if (isShowingStats)
+                ResetTimer();
 
-
-            ResetTimer();
-            // rin.r[0] = 12;
-            // err = _kernel_swi(OS_WriteC, &rin, &rout);
             ClearScreen(0x0, 1); // Clear the new draw buffer
-            clearCycles = 65536 - MeasureDelta();
-            ResetTimer();
+
+            if (isShowingStats)
+            {
+                clearCycles = 65536 - MeasureDelta();
+                ResetTimer();
+            }
 
             EulerToMat(&mat, heading, pitch, bank);
 
@@ -219,9 +221,11 @@ int main(int argc, char *argv[])
                 g_Mesh.verts_transformed[i].y = multfix(g_Mesh.verts_transformed[i].y, (scale));
             }
 
-            mathCycles = 65536 - MeasureDelta();
-            ResetTimer();
-
+            if (isShowingStats)
+            {
+                mathCycles = 65536 - MeasureDelta();
+                ResetTimer();
+            }
             // Look at the transformed normal for each face and decide whether
             // to include it in the next render queue.
             for (i = 0; i < cvector_size(g_Mesh.faces); ++i)
@@ -245,11 +249,13 @@ int main(int argc, char *argv[])
                 }
             }
 
-            depthCycles = 65536 - MeasureDelta();
-            ResetTimer();
+            if (isShowingStats)
+            {
+                depthCycles = 65536 - MeasureDelta();
+                ResetTimer();
+            }
 
             // Painter's algorithm. Proceed from furthest to nearest.
-
             for (i=MAXDEPTH - 1;i !=0; i--) {
                 while (RenderQueue[i]) {  // Render faces with current depth
                     queuePtr = RenderQueue[i];
@@ -280,29 +286,29 @@ int main(int argc, char *argv[])
                 }
             }
 
-            renderCycles = 65536 - MeasureDelta();
-            ResetTimer();
+            if (isShowingStats)
+            {
+                renderCycles = 65536 - MeasureDelta();
+                ResetTimer();
 
-            // Uncomment the following to print debug output top-left
-
-            rin.r[0] = 30;
-            err = _kernel_swi(OS_WriteC, &rin, &rout);
-            printf("CLEAR     : ");
-            for (i = 0; i < (clearCycles >> 10); ++i)
-                putchar('-');
-            printf("\n3D MATH   : ");
-            for (i = 0; i < (mathCycles >> 10); ++i)
-                putchar('-');
-            printf("\nDEPTH SORT: ");
-            for (i = 0; i < (depthCycles >> 10); ++i)
-                putchar('-');
-            printf("\nTRI COUNT : ");
-            for (i = 0; i < (triCount >> 2); ++i)
-                putchar('-');
-            printf("\nRASTERIZER: ");
-            for (i = 0; i < (renderCycles >> 10); ++i)
-                putchar('-');
-
+                rin.r[0] = 30;
+                err = _kernel_swi(OS_WriteC, &rin, &rout);
+                printf("CLEAR     : ");
+                for (i = 0; i < (clearCycles >> 10); ++i)
+                    putchar('-');
+                printf("\n3D MATH   : ");
+                for (i = 0; i < (mathCycles >> 10); ++i)
+                    putchar('-');
+                printf("\nDEPTH SORT: ");
+                for (i = 0; i < (depthCycles >> 10); ++i)
+                    putchar('-');
+                printf("\nTRI COUNT : ");
+                for (i = 0; i < (triCount >> 2); ++i)
+                    putchar('-');
+                printf("\nRASTERIZER: ");
+                for (i = 0; i < (renderCycles >> 10); ++i)
+                    putchar('-');
+            }
         }
     }
     else

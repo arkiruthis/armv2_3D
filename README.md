@@ -12,6 +12,7 @@ As per the license this software is released AS IS. I don't have the time to loo
 ### Prerequisites
 - RPCEmu or Arculator (NOTE - Arculator needs UniBoot for Acorn make tools to be located)
 - Acorn C++ (available in [RPCEmu Easy-Start bundle](https://www.marutan.net/rpcemu/index.php))
+- WINDOWS USERS - You MUST check out the repo files as LF, not CRLF (Windows default) line endings. Otherwise you will get errors when using the Makefile in RISCOS due to the extra characters. Look into Git's autocrlf documentation for more info about this. 
 
 ### QuickStart
 1. Checkout the repo and copy the `Project` folder into your `hostfs` folder for your emulator.
