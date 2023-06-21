@@ -1,7 +1,7 @@
 # armv2_3D
 
 ### Description
-A small fixed-point 3D mesh renderer for Acorn Archimedes. Written in C89 and ARM assembly. Utilizes the [C89 dynamic array](https://github.com/eteran/c-vector) by Evan Teran.
+A small fixed-point 3D mesh renderer for Acorn Archimedes. Written in C89 and ARM assembly. Utilizes the [C89 dynamic array](https://github.com/eteran/c-vector) by Evan Teran. Also includes the [TimerMod](https://armclub.org.uk/free/) module via SWI by David J. Ruck for performance metrics on RISCOS. 
 
 Primarily aimed at ARM250 (A3010 / A3020) but code compatible up to RISC PC.
 

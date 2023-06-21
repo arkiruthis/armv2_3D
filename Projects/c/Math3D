@@ -61,6 +61,25 @@ void RotateAxis(MAT43 *mat, V3D *axis, int angle)
     mat->tx = mat->ty = mat->tz = 0;
 }
 
+void SetProjection(MAT43 *mat, fix fov, fix aspectRatio, fix near, fix far)
+{
+    fix f = float2fix(1.0f / tan(fix2float(fov) / 2.0f));
+    fix nf = near - far;
+
+    mat->m11 = multfix(f, aspectRatio);
+    mat->m12 = 0;
+    mat->m13 = 0;
+    mat->m21 = 0;
+    mat->m22 = f;
+    mat->m23 = 0;
+    mat->m31 = 0;
+    mat->m32 = 0;
+    mat->m33 = multOneOver((far + near), oneover(nf));
+    mat->tx = 0;
+    mat->ty = 0;
+    mat->tz = multfix((multfix(int2fix(2), far)), oneover(nf));
+}
+
 void Normal(V3D *a, V3D *b, V3D *c, V3D *n)
 {
     V3D v1, v2;

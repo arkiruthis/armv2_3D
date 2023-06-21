@@ -1,2 +1,4 @@
 Set Game$Dir <Obey$Dir>
+Run <Obey$Dir>.TimerMod
 Run <Obey$Dir>.!MeshRenderer
+RmKill TimerMod

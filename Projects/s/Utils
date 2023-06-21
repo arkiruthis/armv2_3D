@@ -22,41 +22,6 @@ VDUSetup
         SWI OS_RemoveCursors
         MOVS pc,lr
 
-; Constants
-IOC_T0LOW     DCD 0x03200050 ; Timer 0 Low Byte
-IOC_T0HIGH    DCD 0x03200054 ; Timer 0 High Byte
-IOC_T0GO      DCD 0x03200058 ; Timer 0 Go
-IOC_T0LATCH   DCD 0x0320005C ; Timer 0 Latch
-
-; Variables
-DeltaTime     DCD 0
-
-        EXPORT ResetTimer
-ResetTimer
-        MOV r0, #&FF
-        LDR r1, IOC_T0LOW    ; Set Timer 0 low byte
-        STR r0,[r1]
-        LDR r1, IOC_T0HIGH   ; Set Timer 0 high byte
-        STR r0,[r1]
-        LDR r1, IOC_T0GO     ; Go! Go! Go!
-        STR r0,[r1]
-        MOV pc,lr
-
-        EXPORT  MeasureDelta
-MeasureDelta
-        MOV r0, #&FF
-        LDR r2,IOC_T0LATCH
-        STR r0,[r2]
-        LDR r2,IOC_T0HIGH ; get high byte
-        LDR r2,[r2]
-        AND r2,r2,#&FF
-        LDR r3,IOC_T0LOW ; get low byte
-        LDR r3,[r3]
-        AND r3,r3,#&FF
-        ORR r2,r3,r2,LSL#8 ; combine LO and HI
-        MOV r0,r2   ; Place count in r0 for return value in C
-        MOV pc,lr
-
 ; ====== SET BUFFERS =====
 ; Save the memory buffer details from the C side
 ; TODO - We can do this all on the ASM side... stop using the kernel SWI C funcs.
@@ -196,52 +161,42 @@ TopShortDX        RN 0
 LongSideDX        RN 1
 BottomShortDX     RN 2
 
-        EXPORT SortVertices
-SortVertices 
-        STMFD sp!,{r4-r6} ; Store the current registers
-        LDMFD a1!,{r1-r6} ; Load 3 2D un-sorted coords
+        EXPORT DrawTriangle ; DrawTriangle(int triList, int color);
+DrawTriangle
+        STMFD sp!,{r0-r1,r4-r12,r14} ; Store the current registers
+
+        LDMFD r0,{r7-r12} ; Load 3 2D un-sorted coords
 
         ; X1 = R1, Y1 = R2, X2 = R3, Y2 = R4, etc. etc.
 
         ; Sort V0-V2 by Y, swap where necessary.
         ; V0 and V1
-        CMP r2,r4
-        MOVGT r12,r1
-        MOVGT r1,r3
-        MOVGT r3,r12
-        MOVGT r12,r2
-        MOVGT r2,r4
-        MOVGT r4,r12
+        CMP r8,r10
+        MOVGT r2,r7
+        MOVGT r7,r9
+        MOVGT r9,r2
+        MOVGT r2,r8
+        MOVGT r8,r10
+        MOVGT r10,r2
 
         ; V0 and V2
-        CMP r2,r6
-        MOVGT r12,r1
-        MOVGT r1,r5
-        MOVGT r5,r12
+        CMP r8,r12
+        MOVGT r2,r7
+        MOVGT r7,r11
+        MOVGT r11,r2
+        MOVGT r2,r8
+        MOVGT r8,r12
         MOVGT r12,r2
-        MOVGT r2,r6
-        MOVGT r6,r12
 
         ; V1 and V2
-        CMP r4,r6
-        MOVGT r12,r3
-        MOVGT r3,r5
-        MOVGT r5,r12
-        MOVGT r12,r4
-        MOVGT r4,r6
-        MOVGT r6,r12
-
-        STMFD a1!,{r1-r6} ; Store 3 2D un-sorted coords
-
-        LDMFD sp!,{r4-r6} ; Restore registers
-        MOV pc,lr
-
-        EXPORT DrawTriangle ; DrawTriangle(int triList, int color);
-DrawTriangle
-        STMFD sp!,{r0-r1,r4-r12,r14} ; Store the current registers
-
-        LDMFD a1, {r7-r12} ; Load sorted coords
-
+        CMP r10,r12
+        MOVGT r2,r9
+        MOVGT r9,r11
+        MOVGT r11,r2
+        MOVGT r2,r10
+        MOVGT r10,r12
+        MOVGT r12,r2
+ 
         STR r9,ShortSideXMid ; We need middle X coord for the short side switch later.
 
         LDR r5,OneOver ; start of oneOver block
@@ -301,94 +256,75 @@ EdgeLoopTop
         ADD r9,r11,r7,LSR#16
         ADD r10,r11,r8,LSR#16
         SUB r4,r10,r9
+
         CMP r4,#4
-        BLT SPINLAST            ; Too small, just do a byte-by-byte walk
+        BLT LastBytes           ; Too small, just do a byte-by-byte walk
 
-        ; Shuffle up to the quad boundary
+        ; Shuffle up to the word boundary
+        TST r9,#3
+        STRNEB r0,[r9],#1
         TSTNE r9,#3
         STRNEB r0,[r9],#1
-        SUBNE r4,r4,#1
         TSTNE r9,#3
         STRNEB r0,[r9],#1
-        SUBNE r4,r4,#1
-        TSTNE r9,#3
-        STRNEB r0,[r9],#1
-        SUBNE r4,r4,#1
 
-        CMP r4,#0
-        BLE DEND
-        MOV r4,r4,LSR#4
-        CMP r4,#16
-        BGT DEND
+        SUB r4,r10,r9
+
+        MOV r4,r4,LSR#4         ; r4 = r4 / 16
+        RSB r4,r4,#32           ; r4 = 32 - r4
+        ADD pc,pc,r4,LSL#2      ; Jump to the correct quad loop
+        MOV r0, r0 ;NOP
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+
+        ; Walk as many words as we can before the final bytes
+        SUB r4,r10,r9
+        MOV r4,r4,LSR#2
+        RSB r4,r4,#4
         ADD pc,pc,r4,LSL#2 ; If remaining width > 16 pixels, we can use this jump table.
-        B DEND
-        B DEND
-        B D1
-        B D2
-        B D3
-        B D4
-        B D5
-        B D6
-        B D7
-        B D8
-D1
-        STMIA r9!,{r0-r3}
-        B DEND
-D2
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND
-D3
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND
-D4
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND
-D5
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND
-D6
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND
-D7
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND
-D8
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND
-DEND 
+        DCD 0
+        STR r0,[r9],#4
+        STR r0,[r9],#4
+        STR r0,[r9],#4
+        STR r0,[r9],#4
 
-SPINLAST
+LastBytes
         CMP r9,r10
         STRLTB r0,[r9],#1
-        BLT SPINLAST
+        CMP r9,r10
+        STRLTB r0,[r9],#1
+        CMP r9,r10
+        STRLTB r0,[r9],#1
 
         SUB r14,r14,#1
         ADD r11,r11,#320
@@ -415,94 +351,74 @@ EdgeLoopBottom
         ADD r9,r11,r7,LSR#16
         ADD r10,r11,r8,LSR#16
         SUB r4,r10,r9
+
         CMP r4,#4
-        BLT SPINLAST2
+        BLT LastBytes2          ; Too small, just do a byte-by-byte walk
 
-        ; Shuffle up to the quad boundary
+        ; Shuffle up to the word boundary
+        TST r9,#3
+        STRNEB r0,[r9],#1
         TSTNE r9,#3
         STRNEB r0,[r9],#1
-        SUBNE r4,r4,#1
         TSTNE r9,#3
         STRNEB r0,[r9],#1
-        SUBNE r4,r4,#1
-        TSTNE r9,#3
-        STRNEB r0,[r9],#1
-        SUBNE r4,r4,#1
 
-        CMP r4,#0
-        BLE DEND2
-        MOV r4,r4,LSR#4
-        CMP r4,#16
-        BGT DEND2
-        ADD pc,pc,r4,LSL#2
-        B DEND2
-        B DEND2
-        B D12
-        B D22
-        B D32
-        B D42
-        B D52
-        B D62
-        B D72
-        B D82
-D12
-        STMIA r9!,{r0-r3}
-        B DEND2
-D22
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND2
-D32
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND2
-D42
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND2
-D52
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND2
-D62
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND2
-D72
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND2
-D82
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND2
-DEND2 
+        SUB r4,r10,r9
 
-SPINLAST2
+        MOV r4,r4,LSR#4         ; r4 = r4 / 16
+        RSB r4,r4,#32           ; r4 = 32 - r4
+        ADD pc,pc,r4,LSL#2      ; Jump to the correct quad loop
+        MOV r0, r0 ;NOP
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+        STMIA r9!,{r0-r3}
+
+        SUB r4,r10,r9
+        MOV r4,r4,LSR#2
+        RSB r4,r4,#4
+        ADD pc,pc,r4,LSL#2 ; If remaining width > 16 pixels, we can use this jump table.
+        DCD 0
+        STR r0,[r9],#4
+        STR r0,[r9],#4
+        STR r0,[r9],#4
+        STR r0,[r9],#4
+
+LastBytes2
         CMP r9,r10
         STRLTB r0,[r9],#1
-        BLT SPINLAST2
+        CMP r9,r10
+        STRLTB r0,[r9],#1
+        CMP r9,r10
+        STRLTB r0,[r9],#1
 
         SUB r14,r14,#1
         ADD r11,r11,#320
