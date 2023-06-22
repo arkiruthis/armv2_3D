@@ -27,14 +27,14 @@ doc/**         linguist-documentation
 *,ffb          text diff=bbcbasic linguist-language=bbcbasic 
 *,fd1          text diff=bbcbasic linguist-language=bbcbasic
 
-Projects/**/c/*     text diff=c linguist-language=c
-Projects/**/h/*     text diff=c linguist-language=c
-Projects/**/c++/*   text diff=cpp linguist-language=cpp
-Projects/**/cpp/*   text diff=cpp linguist-language=cpp 
-Projects/**/bas/*   text diff=bbcbasic  linguist-language=bbcbasic
-Projects/**/s/*     text diff=armasm linguist-language=assembly
-Projects/**/Hdr/*   text diff=armasm linguist-language=assembly
-Projects/**/fth/*   text diff=forth linguist-language=forth
-Projects/**/p/*     text diff=prolog linguist-language=prolog
+Projects/**/c/*     text eol=lf diff=c linguist-language=c
+Projects/**/h/*     text eol=lf diff=c linguist-language=c
+Projects/**/c++/*   text eol=lf diff=cpp linguist-language=cpp
+Projects/**/cpp/*   text eol=lf diff=cpp linguist-language=cpp 
+Projects/**/bas/*   text eol=lf diff=bbcbasic  linguist-language=bbcbasic
+Projects/**/s/*     text eol=lf diff=armasm linguist-language=assembly
+Projects/**/Hdr/*   text eol=lf diff=armasm linguist-language=assembly
+Projects/**/fth/*   text eol=lf diff=forth linguist-language=forth
+Projects/**/p/*     text eol=lf diff=prolog linguist-language=prolog
 
 VersionNum     linguist-language=c gitlab-language=c
