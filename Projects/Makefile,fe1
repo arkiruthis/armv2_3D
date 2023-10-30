@@ -42,8 +42,6 @@ o.Mesh:	h.CVector
 o.Mesh:	h.CVector
 o.Utils: s.Utils
 o.Utils: h.SWINames
-o.Utils: s.Utils
-o.Utils: h.SWINames
 o.Main:	c.Main
 o.Main:	C:h.kernel
 o.Main:	C:h.swis

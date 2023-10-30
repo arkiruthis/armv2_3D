@@ -20,8 +20,6 @@ extern void SortVertices(int triList);
 extern void DrawTriangle(int triList, int color);
 extern void ClearScreen(int color, int fullclear);
 extern int KeyPress(int keyCode);
-extern void ResetTimer(void);
-extern int MeasureDelta(void);
 
 // GLOBALS
 static unsigned char color; // <uint8> color
@@ -38,6 +36,10 @@ unsigned char palette[64] = { 0, 1, 2, 3, 44, 45, 46, 47, 208, 209, 210, 211, 25
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
 #define MAXDEPTH 512
+
+#define SWI_Timer_Start 0x000490C0
+#define SWI_Timer_Stop 0x000490C1
+#define SWI_Timer_Value 0x000490C2
 
 int cmpfunc (const void * a, const void * b) {
    return ( ((TRI*)b)->depth - ((TRI*)a)->depth );
@@ -160,13 +162,17 @@ int main(int argc, char *argv[])
             err = _kernel_swi(OS_ReadVduVariables, &rin, &rout);
             UpdateMemAddress(swi_data[3], swi_data[4]); // Pass these to the ASM side
             if (isShowingStats)
-                ResetTimer();
+            {
+                err = _kernel_swi(SWI_Timer_Stop, &rin, &rout);
+                err = _kernel_swi(SWI_Timer_Start, &rin, &rout);
+            }
 
             ClearScreen(0x28282828, 1); // Clear the new draw buffer
             if (isShowingStats)
             {
-                clearCycles = 65536 - MeasureDelta();
-                ResetTimer();
+                err = _kernel_swi(SWI_Timer_Stop, &rin, &rout);
+                clearCycles = rout.r[1];
+                err = _kernel_swi(SWI_Timer_Start, &rin, &rout);
             }
 
             EulerToMat(&mat, heading, pitch, bank);
@@ -186,8 +192,9 @@ int main(int argc, char *argv[])
 
             if (isShowingStats)
             {
-                mathCycles = 65536 - MeasureDelta();
-                ResetTimer();
+                err = _kernel_swi(SWI_Timer_Stop, &rin, &rout);
+                mathCycles = rout.r[1];
+                err = _kernel_swi(SWI_Timer_Start, &rin, &rout);
             }
             // Look at the transformed normal for each face and decide whether
             // to include it in the next render queue.
@@ -213,8 +220,9 @@ int main(int argc, char *argv[])
 
             if (isShowingStats)
             {
-                depthCycles = 65536 - MeasureDelta();
-                ResetTimer();
+                err = _kernel_swi(SWI_Timer_Stop, &rin, &rout);
+                depthCycles = rout.r[1];
+                err = _kernel_swi(SWI_Timer_Start, &rin, &rout);
             }
 
             // Painter's algorithm. Proceed from furthest to nearest.
@@ -246,26 +254,17 @@ int main(int argc, char *argv[])
 
             if (isShowingStats)
             {
-                renderCycles = 65536 - MeasureDelta();
-                ResetTimer();
+                err = _kernel_swi(SWI_Timer_Stop, &rin, &rout);
+                renderCycles = rout.r[1];
 
                 rin.r[0] = 30;
                 err = _kernel_swi(OS_WriteC, &rin, &rout);
-                printf("CLEAR     : "); 
-                for (i = 0; i < (clearCycles >> 10); ++i)
-                    putchar('-');
-                printf("\n3D MATH   : ");
-                for (i = 0; i < (mathCycles >> 10); ++i)
-                    putchar('-');
-                printf("\nDEPTH SORT: ");
-                for (i = 0; i < (depthCycles >> 10); ++i)
-                    putchar('-');
-                printf("\nTRI COUNT : ");
-                for (i = 0; i < (triCount >> 2); ++i)
-                    putchar('-');
-                printf("\nRASTERIZER: ");
-                for (i = 0; i < (renderCycles >> 10); ++i)
-                    putchar('-');
+
+                printf("CLEAR     :  %d", clearCycles);
+                printf("\n3D MATH   :  %d", mathCycles);
+                printf("\nDEPTH SORT:  %d", depthCycles);
+                printf("\nRASTERIZER: %d", renderCycles);
+                printf("\nTOTAL     : %d", clearCycles + mathCycles + depthCycles + renderCycles);
             }
         }
     }
