@@ -285,69 +285,28 @@ EdgeLoopTop
         MOV r4,r4,LSR#4
         CMP r4,#16
         BGT DEND
+        RSB r4,r4,#16 ; reverse order
         ADD pc,pc,r4,LSL#2 ; If remaining width > 16 pixels, we can use this jump table.
         B DEND
-        B DEND
-        B D1
-        B D2
-        B D3
-        B D4
-        B D5
-        B D6
-        B D7
-        B D8
-D1
-        STMIA r9!,{r0-r3}
-        B DEND
-D2
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND
-D3
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND
-D4
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
-        B DEND
-D5
+
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND
-D6
+
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND
-D7
+
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND
-D8
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND
 DEND 
 
 SPINLAST
@@ -399,69 +358,28 @@ EdgeLoopBottom
         MOV r4,r4,LSR#4
         CMP r4,#16
         BGT DEND2
+        RSB r4,r4,#16 ; reverse order
         ADD pc,pc,r4,LSL#2
         B DEND2
-        B DEND2
-        B D12
-        B D22
-        B D32
-        B D42
-        B D52
-        B D62
-        B D72
-        B D82
-D12
-        STMIA r9!,{r0-r3}
-        B DEND2
-D22
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND2
-D32
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND2
-D42
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
-        B DEND2
-D52
+
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND2
-D62
+
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND2
-D72
+
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
         STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND2
-D82
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        STMIA r9!,{r0-r3}
-        B DEND2
 DEND2 
 
 SPINLAST2
