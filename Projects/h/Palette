@@ -1,0 +1,8 @@
+#ifndef PALETTE_H
+#define PALETTE_H
+
+extern char *gBaseDirectoryPath;
+
+void SetPalette(void);
+
+#endif // PALETTE_H

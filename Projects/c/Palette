@@ -1,0 +1,119 @@
+#include "Palette.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+
+#include "kernel.h"
+#include "swis.h"
+
+unsigned int originalPal[16] = {
+    0x000000, // rgb(0, 0, 0)
+    0x444422, // rgb(68, 68, 34)
+    0x666644, // rgb(102, 102, 68)
+    0x888866, // rgb(136, 136, 102)
+    0xaaaa88, // rgb(170, 170, 136)
+    0xccccaa, // rgb(204, 204, 170)
+    0xaa4400, // rgb(170, 68, 0)
+    0x664422, // rgb(102, 68, 34)
+    0x886622, // rgb(136, 102, 34)
+    0xaa8822, // rgb(170, 136, 34)
+    0xcccc22, // rgb(204, 204, 34)
+    0x88aa22, // rgb(136, 170, 34)
+    0x668822, // rgb(102, 136, 34)
+    0x446622, // rgb(68, 102, 34)
+    0x004466, // rgb(0, 68, 102)
+    0x446688  // rgb(68, 102, 136)
+};
+
+unsigned char originalFound[16] = {0, 0, 0, 0, 0, 0, 0, 0,
+                                   0, 0, 0, 0, 0, 0, 0, 0};
+
+unsigned char pal16[16 * 3] =
+    {
+        0,   0,   0,   68,  68,  34,  102, 102, 68, 170, 170,
+        136, 80,  147, 47, // 170, 68, 0,
+        102, 68,  34,  136, 102, 34,  170, 136, 34, 68,  102,
+        34,  0,   68,  102, 68,  102, 136, 28,  56, 52, // 86,  86,  86, // 255,
+                                                        // 255, 255,
+        52,  115, 20,  // 154,121,28, // 126, 126, 126, // 136, 136, 102,
+        105, 125, 121, // 77,105,97, // 154, 154, 154, // 204, 204, 34,
+        77,  105, 97,  // 199, 199, 199, // 201, 201, 201, // 136, 170, 34,
+        48,  81,  73,  // 101, 85, 56, // 255, 255, 255, // 102, 136, 34,
+};
+
+unsigned int savePalette[256];
+
+static _kernel_oserror *err;
+static _kernel_swi_regs rin, rout;
+
+void SetPalette(void)
+{
+  typedef struct PalEntry
+  {
+    unsigned char VDU, INDEX, MODE, R, G, B;
+  } PalEntry;
+
+  PalEntry pal;
+  int i = 0;
+
+  pal.VDU  = 19;
+  pal.MODE = 16;
+
+  rin.r[0] = (unsigned int)&pal;
+  rin.r[1] = 6;
+
+  for (i = 0; i < 16; ++i)
+  {
+    pal.R     = pal16[i * 3];
+    pal.G     = pal16[i * 3 + 1];
+    pal.B     = pal16[i * 3 + 2];
+    pal.INDEX = i;
+
+    err = _kernel_swi(OS_WriteN, &rin, &rout);
+  }
+}
+
+void Save256()
+{
+  int i, j, h;
+  char hex[200];
+  FILE *file;
+
+  file = fopen("colors_txt", "w");
+  if (!file)
+    return;
+
+  for (i = 0; i < 256; i++)
+  {
+    rin.r[0] = i;
+    rin.r[1] = 16;
+    err      = _kernel_swi(OS_ReadPalette, &rin, &rout);
+    // savePalette[i] = h;
+    h = ((rout.r[2] >> 8) & 0xFF) << 16 | ((rout.r[2] >> 16) & 0xFF) << 8 |
+        ((rout.r[2] >> 24) & 0xFF);
+
+    for (j = 0; j < 16; ++j)
+    {
+      if (h == originalPal[j])
+      {
+        ++originalFound[j];
+        break;
+      }
+    }
+
+    sprintf(hex, "%06X\n", h);
+    fputs(hex, file);
+  }
+
+  for (i = 0; i < 16; ++i)
+  {
+    if (originalFound[i] > 0)
+      sprintf(hex, "%d: %d times\n", i, originalFound[i]);
+    else
+      sprintf(hex, "%d: not found\n", i);
+
+    fputs(hex, file);
+  }
+
+  fclose(file);
+}
