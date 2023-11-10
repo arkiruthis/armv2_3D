@@ -11,7 +11,7 @@ As per the license this software is released AS IS. I don't have the time to loo
 
 ### Prerequisites
 - RPCEmu or Arculator (NOTE - Arculator needs UniBoot for Acorn make tools to be located)
-- Acorn C++ (available in [RPCEmu Easy-Start bundle](https://www.marutan.net/rpcemu/index.php))
+- Acorn C++ 
 
 ### QuickStart
 1. Checkout the repo and copy the `Project` folder into your `hostfs` folder for your emulator.
@@ -42,6 +42,8 @@ Julien Verneuil - For their [fantastic online blog post](https://www.onirom.fr/w
 ray//.tSCc. - For this fascinating [2005 demo coding article](http://alive.atari.org/alive11/frstclip.php) which provided a much better radix sort alternative to qsort() for speeding up the triangle depth pass.
 
 RISCOS.com for making available online much of the [documentation](http://www.riscos.com/support/developers/) that was orginally only available in book form.
+
+David Ruck for his superb TimerMod utility which is [available from his site](https://armclub.org.uk/free/) which made profiling many of the routines far easier.
 
 ### Book References
 
