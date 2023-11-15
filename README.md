@@ -10,8 +10,8 @@ As per the license this software is released AS IS. I don't have the time to loo
 [![IMAGE ALT TEXT](http://img.youtube.com/vi/HoJ2emDg2gI/0.jpg)](http://www.youtube.com/watch?v=HoJ2emDg2gI "Video Title")
 
 ### Prerequisites
-- RPCEmu or Arculator (NOTE - Arculator needs UniBoot for Acorn make tools to be located)
-- Acorn C++ 
+- [RPCEmu - 3.71 version](https://www.marutan.net/rpcemu/easystart.html) or [Arculator](http://b-em.bbcmicro.com/arculator/) (NOTE - Arculator needs UniBoot for Acorn make tools to be located)
+- [Acorn C++](https://www.4corn.co.uk/articles/acornc5/) (includes C/C++/ObjASM compilers)
 
 ### QuickStart
 1. Checkout the repo and copy the `Project` folder into your `hostfs` folder for your emulator.
