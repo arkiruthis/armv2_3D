@@ -170,7 +170,7 @@ int main(int argc, char *argv[])
                 err = _kernel_swi(SWI_Timer_Start, &rin, &rout);
             }
 
-            ClearScreen(0x0, 1); // Clear the new draw buffer
+            ClearScreen(0xc2c2c2c2, 1); // Clear the new draw buffer
             if (isShowingStats)
             {
                 err = _kernel_swi(SWI_Timer_Stop, &rin, &rout);
