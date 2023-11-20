@@ -4,5 +4,6 @@
 extern char *gBaseDirectoryPath;
 
 void SetPalette(void);
+void Save256(void);
 
 #endif // PALETTE_H

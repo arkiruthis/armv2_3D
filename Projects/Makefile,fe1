@@ -35,10 +35,6 @@ Squeezeflags = -o $@
 
 
 # Dynamic dependencies:
-o.Utils: s.Utils
-o.Utils: h.SWINames
-o.Utils: s.Utils
-o.Utils: h.SWINames
 o.Math3D:	c.Math3D
 o.Math3D:	h.Math3D
 o.Mesh:	c.Mesh
@@ -50,10 +46,6 @@ o.Palette:	c.Palette
 o.Palette:	h.Palette
 o.Palette:	C:h.kernel
 o.Palette:	C:h.swis
-o.Palette:	c.Palette
-o.Palette:	h.Palette
-o.Palette:	C:h.kernel
-o.Palette:	C:h.swis
 o.Main:	c.Main
 o.Main:	C:h.kernel
 o.Main:	C:h.swis
@@ -72,3 +64,7 @@ o.Main:	h.Math3D
 o.Main:	h.CVector
 o.Main:	h.CVector
 o.Main:	h.Palette
+o.Utils: s.Utils
+o.Utils: h.SWINames
+o.Utils: s.Utils
+o.Utils: h.SWINames

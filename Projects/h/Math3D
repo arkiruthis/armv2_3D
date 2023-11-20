@@ -48,7 +48,7 @@ typedef struct V3D
 
 typedef struct TRI
 {
-  unsigned short a, b, c, d;
+  unsigned int a, b, c, d;
   V3D normal;
   fix depth;
   void *next;
