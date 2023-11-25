@@ -136,7 +136,7 @@ int main(int argc, char *argv[])
             if (KeyPress(114)) // F2
                 dist = MAX(dist - 4, 0);
             if (KeyPress(115)) // F3
-                dist = MIN(dist + 4, 100);
+                dist = MIN(dist + 4, 200);
             // if (KeyPress(20)) // F4
             //     colorIndex = 48;
 
@@ -186,12 +186,12 @@ int main(int argc, char *argv[])
             for (i = 0; i < cvector_size(g_Mesh.verts); ++i)
             {
                 MultV3DMat(&g_Mesh.verts[i], &g_Mesh.verts_transformed[i], &mat);
-                g_Mesh.verts_transformed[i].z -= int2fix(160 + dist);
+                g_Mesh.verts_transformed[i].z += int2fix(160 + dist);
 
-                scale = int2fix(230) / (g_Mesh.verts_transformed[i].z >> 16);
-
-                g_Mesh.verts_transformed[i].x = multfix(g_Mesh.verts_transformed[i].x, (scale));
-                g_Mesh.verts_transformed[i].y = multfix(g_Mesh.verts_transformed[i].y, (scale));
+                scale = 262144 - MIN((g_Mesh.verts_transformed[i].z >> 7), 262143);
+                
+                g_Mesh.verts_transformed[i].x = multfix(g_Mesh.verts_transformed[i].x, (scale >> 1));
+                g_Mesh.verts_transformed[i].y = multfix(g_Mesh.verts_transformed[i].y, (scale >> 1));
             }
 
             if (isShowingStats)
@@ -208,15 +208,15 @@ int main(int argc, char *argv[])
                 _verts[0] = g_Mesh.verts_transformed[g_Mesh.faces[i].a];
                 _verts[1] = g_Mesh.verts_transformed[g_Mesh.faces[i].b];
                 _verts[2] = g_Mesh.verts_transformed[g_Mesh.faces[i].c];
-                if (orient2d(_verts[0], _verts[1], _verts[2]) > 0)
+                if (orient2d(_verts[0], _verts[1], _verts[2]) < 0)
                 {
                     MultV3DMat(&g_Mesh.faces[i].normal, &tmpVec, &mat);
                     // Add face to the destination list if it is facing us
                     // Important to invert the depth here as the camera looks into -Z
                     // but our RenderQueue is indexed by positive numbers
                     g_Mesh.faces[i].d = palette[MAX(tmpVec.z / 4500, 0)];
-                    g_Mesh.faces[i].depth = -MIN(((_verts[0].z + _verts[1].z + _verts[2].z) >> 17), 512);
-                    g_Mesh.faces[i].d = (g_Mesh.faces[i].d << 8) + MAX(MIN((g_Mesh.faces[i].depth >> 1) - 127, 63), 0);
+                    g_Mesh.faces[i].depth = MIN(((_verts[0].z + _verts[1].z + _verts[2].z) >> 17), 512);
+                    g_Mesh.faces[i].d = (g_Mesh.faces[i].d << 8) + MAX(MIN((g_Mesh.faces[i].depth >> 2) - 63, 63), 0);
                     // Push the previous triangle (if any) onto the stack for this depth.
                     g_Mesh.faces[i].next = RenderQueue[g_Mesh.faces[i].depth];
                     RenderQueue[g_Mesh.faces[i].depth] = &g_Mesh.faces[i];
