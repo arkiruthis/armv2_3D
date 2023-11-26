@@ -42,9 +42,9 @@ int LoadOBJ(char *filename)
         if (strncmp(line, "v ", 2) == 0)
         {
             sscanf(line, "v %f %f %f", &vertex_float[0], &vertex_float[1], &vertex_float[2]);
-            vertex.x = float2fix(vertex_float[0] * 65.f);
-            vertex.y = float2fix(vertex_float[1] * 65.f);
-            vertex.z = float2fix(vertex_float[2] * 65.f);
+            vertex.x = float2fix(vertex_float[0] * 80.f);
+            vertex.y = float2fix(vertex_float[1] * 80.f);
+            vertex.z = float2fix(vertex_float[2] * 80.f);
             cvector_push_back(g_Mesh.verts, vertex);
         }
         // // Face information

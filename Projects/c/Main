@@ -27,6 +27,7 @@ static unsigned int color4; // <uint32> color
 _kernel_oserror *err;
 _kernel_swi_regs rin, rout;
 extern unsigned int fogLookup[];
+static unsigned char *screen;
 
 // A selection of 4 x 16-level gradients from the default Archimedes 256 color palette
 unsigned char palette[64] = { 
@@ -48,10 +49,33 @@ int cmpfunc (const void * a, const void * b) {
    return ( ((TRI*)b)->depth - ((TRI*)a)->depth );
 }
 
+void setPixelColor(int x, int y) {
+    screen[x + y * 320] = 255;
+}
+
+void drawline(int startx, int starty, const int endx, const int endy) {
+    const int dx = abs(endx - startx);
+    const int dy = -abs(endy - starty);
+    const int sx = (startx < endx) ? 1 : -1;
+    const int sy = (starty < endy) ? 1 : -1;
+    int err = dx + dy;
+    int e2;
+
+//    setPixelColor(startx, starty);
+    while (1) {
+        screen[startx + starty * 320] = 255;
+        if (startx == endx && starty == endy) break;
+        e2 = err * 2;
+        if (e2 >= dy) { err += dy; startx += sx; }
+        if (e2 <= dx) { err += dx; starty += sy; }
+    }
+//    setPixelColor(startx, starty);
+}
+
 int main(int argc, char *argv[])
 {
-    int swi_data[10], isRunning = 1, isSpinning = 0, isShowingStats = 0;
-    unsigned char heading = 64, pitch = 0, bank = 0, dist = 0;
+    int swi_data[10], isRunning = 1, isSpinning = 0, isShowingStats = 0, dist = 0;
+    unsigned char heading = 64, pitch = 0, bank = 0;
     unsigned int i, colorIndex = 0;
     char buf[256];
     char *tmp;
@@ -60,6 +84,7 @@ int main(int argc, char *argv[])
     MAT43 mat;
     TRI *RenderQueue[MAXDEPTH], *queuePtr = NULL;
     int clearCycles = 0, mathCycles = 0, depthCycles = 0, renderCycles = 0;
+    int perspectiveTable[256];
 
     memset(&RenderQueue[0], NULL, sizeof(TRI*) * MAXDEPTH);
 
@@ -67,6 +92,7 @@ int main(int argc, char *argv[])
     {
         g_SineTable[i] = float2fix(sin((i * M_PI * 2.0) / 255.0));
         g_OneOver[i] = (i < 1) ? float2fix(1.f) : float2fix(1.f / i);
+        perspectiveTable[i] = (i < 1) ? float2fix(64.f) : float2fix(64.f / i);
     }
 
     tmp = getenv("Game$Dir");
@@ -129,7 +155,7 @@ int main(int argc, char *argv[])
             if (KeyPress(114)) // F2
                 dist = MAX(dist - 4, 0);
             if (KeyPress(115)) // F3
-                dist = MIN(dist + 4, 200);
+                dist = MIN(dist + 4, 300);
             // if (KeyPress(20)) // F4
             //     colorIndex = 48;
 
@@ -157,19 +183,21 @@ int main(int argc, char *argv[])
             rin.r[1] = (int)(&swi_data[3]); // Results
             err = _kernel_swi(OS_ReadVduVariables, &rin, &rout);
             UpdateMemAddress(swi_data[3], swi_data[4]); // Pass these to the ASM side
+            screen = (unsigned char*)swi_data[3];
             if (isShowingStats)
             {
                 err = _kernel_swi(SWI_Timer_Stop, &rin, &rout);
                 err = _kernel_swi(SWI_Timer_Start, &rin, &rout);
             }
 
-            ClearScreen(0xc2c2c2c2, 1); // Clear the new draw buffer
+            ClearScreen(0x0, 1); // Clear the new draw buffer
             if (isShowingStats)
             {
                 err = _kernel_swi(SWI_Timer_Stop, &rin, &rout);
                 clearCycles = rout.r[1];
                 err = _kernel_swi(SWI_Timer_Start, &rin, &rout);
             }
+
 
             EulerToMat(&mat, heading, pitch, bank);
             mat.tz = int2fix(160 + dist);
@@ -179,13 +207,13 @@ int main(int argc, char *argv[])
             for (i = 0; i < cvector_size(g_Mesh.verts); ++i)
             {
                 MultV3DMat(&g_Mesh.verts[i], &g_Mesh.verts_transformed[i], &mat);
-                // g_Mesh.verts_transformed[i].z += int2fix(160 + dist);
 
-                // PREV: scale = int2fix(230) / (g_Mesh.verts_transformed[i].z >> 16); 
-                scale = 262144 - MIN((g_Mesh.verts_transformed[i].z >> 7), 262143);
+                scale = int2fix(100) / (g_Mesh.verts_transformed[i].z >> 16); 
+                //scale = 262144 - MIN((g_Mesh.verts_transformed[i].z >> 8), 262143);
+//                scale = perspectiveTable[MIN(g_Mesh.verts_transformed[i].z >> 17, 255)];
                 
-                g_Mesh.verts_transformed[i].x = multfix(g_Mesh.verts_transformed[i].x, (scale >> 1));
-                g_Mesh.verts_transformed[i].y = multfix(g_Mesh.verts_transformed[i].y, (scale >> 1));
+                g_Mesh.verts_transformed[i].x = multfix(g_Mesh.verts_transformed[i].x, scale);
+                g_Mesh.verts_transformed[i].y = multfix(g_Mesh.verts_transformed[i].y, scale);
             }
 
             if (isShowingStats)
@@ -212,7 +240,7 @@ int main(int argc, char *argv[])
                     // but our RenderQueue is indexed by positive numbers
                     g_Mesh.faces[i].d = palette[MAX(tmpVec.z / 4500, 0)];
                     g_Mesh.faces[i].depth = MIN(((_verts[0].z + _verts[1].z + _verts[2].z) >> 17), 512);
-                    g_Mesh.faces[i].d = (g_Mesh.faces[i].d << 8) + MAX(MIN((g_Mesh.faces[i].depth >> 2) - 63, 63), 0);
+                    g_Mesh.faces[i].d = (g_Mesh.faces[i].d << 8) + MAX(MIN((g_Mesh.faces[i].depth >> 2) - 16, 63), 0);
                     // Push the previous triangle (if any) onto the stack for this depth.
                     g_Mesh.faces[i].next = RenderQueue[g_Mesh.faces[i].depth];
                     RenderQueue[g_Mesh.faces[i].depth] = &g_Mesh.faces[i];
@@ -235,7 +263,12 @@ int main(int argc, char *argv[])
                     _verts[2] = g_Mesh.verts_transformed[queuePtr->c];
 
                     color4 =  (unsigned int)(&fogLookup[queuePtr->d]); // The palette index for this face
-                    DrawTriangle((unsigned int)(&_verts[0]), color4);
+
+                    drawline(160 + (_verts[0].x >> 16), 128 + (_verts[0].y >> 16), 160 + (_verts[1].x >> 16), 128 + (_verts[1].y >> 16));
+                    drawline(160 + (_verts[1].x >> 16), 128 + (_verts[1].y >> 16), 160 + (_verts[2].x >> 16), 128 + (_verts[2].y >> 16));
+                    drawline(160 + (_verts[2].x >> 16), 128 + (_verts[2].y >> 16), 160 + (_verts[0].x >> 16), 128 + (_verts[0].y >> 16));
+
+                    //DrawTriangle((unsigned int)(&_verts[0]), color4);
                     RenderQueue[i] = (TRI*)queuePtr->next; // Next face
                 }
             }
@@ -248,11 +281,15 @@ int main(int argc, char *argv[])
                 rin.r[0] = 30;
                 err = _kernel_swi(OS_WriteC, &rin, &rout);
 
-                printf("CLEAR     :  %d", clearCycles);
-                printf("\n3D MATH   :  %d", mathCycles);
-                printf("\nDEPTH SORT:  %d", depthCycles);
-                printf("\nRASTERIZER: %d", renderCycles);
-                printf("\nTOTAL     : %d", clearCycles + mathCycles + depthCycles + renderCycles);
+                printf("%d, %d, %d", mat.m11, mat.m12, mat.m13);
+                printf("\n%d, %d, %d", mat.m21, mat.m22, mat.m23);
+                printf("\n%d, %d, %d", mat.m31, mat.m32, mat.m33);
+                printf("\n%d", (g_Mesh.verts_transformed[0].z >> 17));
+                // printf("CLEAR     :  %d", clearCycles);
+                // printf("\n3D MATH   :  %d", mathCycles);
+                // printf("\nDEPTH SORT:  %d", depthCycles);
+                // printf("\nRASTERIZER: %d", renderCycles);
+                // printf("\nTOTAL     : %d", clearCycles + mathCycles + depthCycles + renderCycles);
             }
         }
     }

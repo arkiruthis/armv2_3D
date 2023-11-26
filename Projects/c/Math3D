@@ -61,6 +61,38 @@ void RotateAxis(MAT43 *mat, V3D *axis, int angle)
     mat->tx = mat->ty = mat->tz = 0;
 }
 
+void MultMatMat(MAT43 *a, MAT43 *b, MAT43 *dest)
+{
+    dest->m11 = multfix(a->m11, b->m11) + multfix(a->m12, b->m21) + multfix(a->m13, b->m31);
+    dest->m12 = multfix(a->m11, b->m12) + multfix(a->m12, b->m22) + multfix(a->m13, b->m32);
+    dest->m13 = multfix(a->m11, b->m13) + multfix(a->m12, b->m23) + multfix(a->m13, b->m33);
+    dest->m21 = multfix(a->m21, b->m11) + multfix(a->m22, b->m21) + multfix(a->m23, b->m31);
+    dest->m22 = multfix(a->m21, b->m12) + multfix(a->m22, b->m22) + multfix(a->m23, b->m32);
+    dest->m23 = multfix(a->m21, b->m13) + multfix(a->m22, b->m23) + multfix(a->m23, b->m33);
+    dest->m31 = multfix(a->m31, b->m11) + multfix(a->m32, b->m21) + multfix(a->m33, b->m31);
+    dest->m32 = multfix(a->m31, b->m12) + multfix(a->m32, b->m22) + multfix(a->m33, b->m32);
+    dest->m33 = multfix(a->m31, b->m13) + multfix(a->m32, b->m23) + multfix(a->m33, b->m33);
+    dest->tx = multfix(a->tx, b->m11) + multfix(a->ty, b->m21) + multfix(a->tz, b->m31) + b->tx;
+    dest->ty = multfix(a->tx, b->m12) + multfix(a->ty, b->m22) + multfix(a->tz, b->m32) + b->ty;
+    dest->tz = multfix(a->tx, b->m13) + multfix(a->ty, b->m23) + multfix(a->tz, b->m33) + b->tz;
+}
+
+void CopyMatMat(MAT43 *src, MAT43 *dest)
+{
+    dest->m11 = src->m11;
+    dest->m12 = src->m12;
+    dest->m13 = src->m13;
+    dest->m21 = src->m21;
+    dest->m22 = src->m22;
+    dest->m23 = src->m23;
+    dest->m31 = src->m31;
+    dest->m32 = src->m32;
+    dest->m33 = src->m33;
+    dest->tx = src->tx;
+    dest->ty = src->ty;
+    dest->tz = src->tz;
+}
+
 void Normal(V3D *a, V3D *b, V3D *c, V3D *n)
 {
     V3D v1, v2;

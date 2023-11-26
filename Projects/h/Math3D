@@ -63,11 +63,14 @@ typedef struct MAT43
 } MAT43;
 
 void SetIdentity(MAT43 *mat);
+void CopyMatMat(MAT43 *src, MAT43 *dest);
+void MultMatMat(MAT43 *a, MAT43 *b, MAT43 *dest);
 void MultV3DMat(V3D *v, V3D *dest, MAT43 *mat);
 void RotateAxis(MAT43 *mat, V3D *axis, int angle);
 void EulerToMat(MAT43 *mat, int heading, int pitch, int bank);
 void Normal(V3D *a, V3D *b, V3D *c, V3D *n);
 void Normalize(V3D *v);
+
 fix DotProduct(V3D *v1, V3D *v2);
 
 #endif // MATH3D_H
