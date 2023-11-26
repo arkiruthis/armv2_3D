@@ -114,13 +114,6 @@ int main(int argc, char *argv[])
 
     if (err == NULL)
     {
-        for (i = 0; i < cvector_size(g_Mesh.verts); ++i)
-        {
-            g_Mesh.verts[i].x = multfix(g_Mesh.verts[i].x, int2fix(65));
-            g_Mesh.verts[i].y = multfix(g_Mesh.verts[i].y, int2fix(65));
-            g_Mesh.verts[i].z = multfix(g_Mesh.verts[i].z, int2fix(65));
-        }
-
         while (isRunning)
         {
             // TODO, disable "escape condition" OS_Byte 124 and handle Escape key directly.
@@ -179,15 +172,16 @@ int main(int argc, char *argv[])
             }
 
             EulerToMat(&mat, heading, pitch, bank);
-            //mat.tz = int2fix(40 - dist);
+            mat.tz = int2fix(160 + dist);
 
             // Rotate vertices and move into the negative Z space
             // and perform a rudimentary perspective transform.
             for (i = 0; i < cvector_size(g_Mesh.verts); ++i)
             {
                 MultV3DMat(&g_Mesh.verts[i], &g_Mesh.verts_transformed[i], &mat);
-                g_Mesh.verts_transformed[i].z += int2fix(160 + dist);
+                // g_Mesh.verts_transformed[i].z += int2fix(160 + dist);
 
+                // PREV: scale = int2fix(230) / (g_Mesh.verts_transformed[i].z >> 16); 
                 scale = 262144 - MIN((g_Mesh.verts_transformed[i].z >> 7), 262143);
                 
                 g_Mesh.verts_transformed[i].x = multfix(g_Mesh.verts_transformed[i].x, (scale >> 1));
@@ -200,6 +194,8 @@ int main(int argc, char *argv[])
                 mathCycles = rout.r[1];
                 err = _kernel_swi(SWI_Timer_Start, &rin, &rout);
             }
+
+            mat.tz = 0;
             // Look at the transformed normal for each face and decide whether
             // to include it in the next render queue.
             for (i = 0; i < cvector_size(g_Mesh.faces); ++i)
