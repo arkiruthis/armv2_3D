@@ -50,7 +50,6 @@ typedef struct TRI
 {
   unsigned int a, b, c, d;
   V3D normal;
-  fix depth;
   void *next;
 } TRI;
 
